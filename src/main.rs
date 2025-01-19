@@ -12,6 +12,10 @@ fn main() {
         let mut input = String::new();
         stdin.read_line(&mut input).unwrap();
 
+        let input = input.trim_end();
+        if input == "exit 0" {
+            std::process::exit(0);
+        }
         println!("{}: command not found", input.trim_end());
     }
 }
