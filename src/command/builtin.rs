@@ -8,6 +8,7 @@ pub enum BuiltinCommand {
     Exit(String),
     Echo(String),
     Pwd,
+    Cd(String),
     Type(String),
 }
 
@@ -15,6 +16,7 @@ pub(super) enum ExecutableBuiltinCommand {
     Exit(i32),
     Echo(String),
     Pwd,
+    Cd(String),
     Type(Box<Command>),
 }
 
@@ -26,6 +28,7 @@ impl TryFrom<BuiltinCommand> for ExecutableBuiltinCommand {
             BuiltinCommand::Exit(code) => Ok(ExecutableBuiltinCommand::Exit(code.parse()?)),
             BuiltinCommand::Echo(echo) => Ok(ExecutableBuiltinCommand::Echo(echo)),
             BuiltinCommand::Pwd => Ok(ExecutableBuiltinCommand::Pwd),
+            BuiltinCommand::Cd(directory) => Ok(ExecutableBuiltinCommand::Cd(directory)),
             BuiltinCommand::Type(typ) => {
                 let command = Command::try_from(typ)?;
                 Ok(ExecutableBuiltinCommand::Type(Box::new(command)))
@@ -43,12 +46,18 @@ impl Execute for ExecutableBuiltinCommand {
                 let current_directory = std::env::current_dir()?;
                 println!("{}", current_directory.display());
             }
+            ExecutableBuiltinCommand::Cd(directory) => {
+                if std::env::set_current_dir(&directory).is_err() {
+                    println!("cd: {}: No such file or directory", directory);
+                }
+            }
             ExecutableBuiltinCommand::Type(typ) => match *typ {
                 Command::Builtin(builtin_command) => {
                     let command_type = match builtin_command {
                         BuiltinCommand::Exit(_) => "exit",
                         BuiltinCommand::Echo(_) => "echo",
                         BuiltinCommand::Pwd => "pwd",
+                        BuiltinCommand::Cd(_) => "cd",
                         BuiltinCommand::Type(_) => "type",
                     };
                     println!("{} is a shell builtin", command_type);
