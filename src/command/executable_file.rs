@@ -5,6 +5,7 @@ use crate::{error::CommandError, Execute};
 pub struct ExecutableFileCommand {
     pub command: String,
     pub path: PathBuf,
+    pub args: Vec<String>,
 }
 
 impl Execute for ExecutableFileCommand {
@@ -18,6 +19,7 @@ impl TryFrom<&str> for ExecutableFileCommand {
 
     fn try_from(command: &str) -> Result<ExecutableFileCommand, CommandError> {
         let path = std::env::var("PATH")?;
+        let (command, args) = command.split_once(' ').unwrap_or((command, ""));
 
         let command_path = path
             .split(":")
@@ -27,9 +29,15 @@ impl TryFrom<&str> for ExecutableFileCommand {
                 CommandError::MissingCommand("missing executable file command".into())
             })?;
 
+        let args = args
+            .split_whitespace()
+            .map(|arg| arg.trim().to_string())
+            .collect();
+
         Ok(ExecutableFileCommand {
             command: command.into(),
             path: command_path,
+            args,
         })
     }
 }

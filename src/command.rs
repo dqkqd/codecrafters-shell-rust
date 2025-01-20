@@ -1,6 +1,8 @@
 mod builtin;
 mod executable_file;
 
+use std::io::{self, Write};
+
 use anyhow::Result;
 use builtin::{BuiltinCommand, ExecutableBuiltinCommand};
 use executable_file::ExecutableFileCommand;
@@ -40,7 +42,13 @@ impl Execute for Command {
                 let executable_command: ExecutableBuiltinCommand = builtin_command.try_into()?;
                 executable_command.execute()?;
             }
-            Command::File(_executable_file_command) => unimplemented!(),
+            Command::File(executable_file_command) => {
+                let output = std::process::Command::new(executable_file_command.command)
+                    .args(executable_file_command.args)
+                    .output()?;
+                io::stdout().write_all(&output.stdout)?;
+                io::stderr().write_all(&output.stderr)?;
+            }
             Command::Invalid(command) => println!("{}: command not found", command),
         }
         Ok(())
