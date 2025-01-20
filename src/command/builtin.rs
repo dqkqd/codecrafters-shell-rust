@@ -47,7 +47,8 @@ impl Execute for ExecutableBuiltinCommand {
                 println!("{}", current_directory.display());
             }
             ExecutableBuiltinCommand::Cd(directory) => {
-                if std::env::set_current_dir(&directory).is_err() {
+                let expanded_directory = expand_home(&directory)?;
+                if std::env::set_current_dir(&expanded_directory).is_err() {
                     println!("cd: {}: No such file or directory", directory);
                 }
             }
@@ -74,4 +75,14 @@ impl Execute for ExecutableBuiltinCommand {
         }
         Ok(())
     }
+}
+
+fn expand_home(path: &str) -> Result<String> {
+    let mut p = std::env::var("HOME")?;
+    if !p.ends_with("/") {
+        p.push('/');
+    }
+    let expanded = path.replace("~", &p);
+
+    Ok(expanded)
 }
