@@ -7,12 +7,14 @@ use super::Command;
 pub enum BuiltinCommand {
     Exit(String),
     Echo(String),
+    Pwd,
     Type(String),
 }
 
 pub(super) enum ExecutableBuiltinCommand {
     Exit(i32),
     Echo(String),
+    Pwd,
     Type(Box<Command>),
 }
 
@@ -23,6 +25,7 @@ impl TryFrom<BuiltinCommand> for ExecutableBuiltinCommand {
         match command {
             BuiltinCommand::Exit(code) => Ok(ExecutableBuiltinCommand::Exit(code.parse()?)),
             BuiltinCommand::Echo(echo) => Ok(ExecutableBuiltinCommand::Echo(echo)),
+            BuiltinCommand::Pwd => Ok(ExecutableBuiltinCommand::Pwd),
             BuiltinCommand::Type(typ) => {
                 let command = Command::try_from(typ)?;
                 Ok(ExecutableBuiltinCommand::Type(Box::new(command)))
@@ -36,11 +39,16 @@ impl Execute for ExecutableBuiltinCommand {
         match self {
             ExecutableBuiltinCommand::Exit(code) => std::process::exit(code),
             ExecutableBuiltinCommand::Echo(echo) => println!("{}", echo),
+            ExecutableBuiltinCommand::Pwd => {
+                let current_directory = std::env::current_dir()?;
+                println!("{}", current_directory.display());
+            }
             ExecutableBuiltinCommand::Type(typ) => match *typ {
                 Command::Builtin(builtin_command) => {
                     let command_type = match builtin_command {
                         BuiltinCommand::Exit(_) => "exit",
                         BuiltinCommand::Echo(_) => "echo",
+                        BuiltinCommand::Pwd => "pwd",
                         BuiltinCommand::Type(_) => "type",
                     };
                     println!("{} is a shell builtin", command_type);

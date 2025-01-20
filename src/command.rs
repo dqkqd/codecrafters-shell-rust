@@ -25,6 +25,8 @@ impl TryFrom<String> for Command {
             Ok(Command::Builtin(BuiltinCommand::Exit(code.trim().into())))
         } else if let Some(echo) = command.strip_prefix("echo") {
             Ok(Command::Builtin(BuiltinCommand::Echo(echo.trim().into())))
+        } else if command.strip_prefix("pwd").is_some() {
+            Ok(Command::Builtin(BuiltinCommand::Pwd))
         } else if let Some(typ) = command.strip_prefix("type") {
             Ok(Command::Builtin(BuiltinCommand::Type(typ.trim().into())))
         } else if let Ok(executable_file_command) = ExecutableFileCommand::try_from(command) {
