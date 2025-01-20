@@ -1,8 +1,8 @@
 use std::{
-    error, fmt,
     io::{self, Write},
     num::ParseIntError,
 };
+use thiserror::Error;
 
 // TODO: lifetime
 enum Command {
@@ -11,25 +11,10 @@ enum Command {
     Invalid(String),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 enum CommandError {
-    ParseIntError(ParseIntError),
-}
-
-impl fmt::Display for CommandError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            CommandError::ParseIntError(ref err) => write!(f, "ParseIntError: {}", err),
-        }
-    }
-}
-
-impl error::Error for CommandError {}
-
-impl From<ParseIntError> for CommandError {
-    fn from(err: ParseIntError) -> CommandError {
-        CommandError::ParseIntError(err)
-    }
+    #[error("parse int error")]
+    ParseIntError(#[from] ParseIntError),
 }
 
 impl TryFrom<String> for Command {
