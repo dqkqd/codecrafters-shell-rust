@@ -1,15 +1,16 @@
-mod executable;
-mod plain;
+mod builtin;
+mod executable_file;
 
 use anyhow::Result;
-use executable::ExecutableCommand;
-use plain::PlainCommand;
+use builtin::{BuiltinCommand, ExecutableBuiltinCommand};
+use executable_file::ExecutableFileCommand;
 
 use crate::{error::CommandError, Execute};
 
 // TODO: lifetime
 pub enum Command {
-    Builtin(PlainCommand),
+    Builtin(BuiltinCommand),
+    File(ExecutableFileCommand),
     Invalid(String),
 }
 
@@ -19,11 +20,13 @@ impl TryFrom<String> for Command {
     fn try_from(command: String) -> Result<Command, CommandError> {
         let command = command.trim();
         if let Some(code) = command.strip_prefix("exit") {
-            Ok(Command::Builtin(PlainCommand::Exit(code.trim().into())))
+            Ok(Command::Builtin(BuiltinCommand::Exit(code.trim().into())))
         } else if let Some(echo) = command.strip_prefix("echo") {
-            Ok(Command::Builtin(PlainCommand::Echo(echo.trim().into())))
+            Ok(Command::Builtin(BuiltinCommand::Echo(echo.trim().into())))
         } else if let Some(typ) = command.strip_prefix("type") {
-            Ok(Command::Builtin(PlainCommand::Type(typ.trim().into())))
+            Ok(Command::Builtin(BuiltinCommand::Type(typ.trim().into())))
+        } else if let Ok(executable_file_command) = ExecutableFileCommand::try_from(command) {
+            Ok(Command::File(executable_file_command))
         } else {
             Ok(Command::Invalid(command.into()))
         }
@@ -33,10 +36,11 @@ impl TryFrom<String> for Command {
 impl Execute for Command {
     fn execute(self) -> Result<()> {
         match self {
-            Command::Builtin(plain_command) => {
-                let executable_command: ExecutableCommand = plain_command.try_into()?;
+            Command::Builtin(builtin_command) => {
+                let executable_command: ExecutableBuiltinCommand = builtin_command.try_into()?;
                 executable_command.execute()?;
             }
+            Command::File(_executable_file_command) => unimplemented!(),
             Command::Invalid(command) => println!("{}: command not found", command),
         }
         Ok(())

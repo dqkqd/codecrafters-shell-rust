@@ -1,4 +1,4 @@
-use std::num::ParseIntError;
+use std::{env::VarError, num::ParseIntError};
 
 use thiserror::Error;
 
@@ -6,4 +6,10 @@ use thiserror::Error;
 pub enum CommandError {
     #[error("parse int error")]
     ParseIntError(#[from] ParseIntError),
+
+    #[error("invalid env var")]
+    VarError(#[from] VarError),
+
+    #[error("missing command {0}")]
+    MissingCommand(String),
 }
