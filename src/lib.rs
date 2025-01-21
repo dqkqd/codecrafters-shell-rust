@@ -1,5 +1,6 @@
 mod command;
 mod error;
+mod parser;
 
 use anyhow::Result;
 

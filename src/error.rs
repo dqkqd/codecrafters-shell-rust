@@ -12,4 +12,7 @@ pub enum CmdError {
 
     #[error("missing command {0}")]
     MissingCmd(String),
+
+    #[error("empty command")]
+    Empty,
 }
