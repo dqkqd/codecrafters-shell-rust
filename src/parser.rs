@@ -12,6 +12,7 @@ impl Token {
                 let strings: Vec<String> = tokens.iter().map(String::from).collect();
                 strings.join("")
             })
+            .filter(|s| !s.is_empty())
             .collect()
     }
 }
@@ -95,6 +96,13 @@ impl Parser<'_> {
                     // skip the last one
                     self.next().unwrap();
                 }
+            } else if c == &b'"' {
+                self.next().unwrap();
+                if let Some(token) = self.read_until(|c| c == &b'"') {
+                    tokens.push(token);
+                    // skip the last one
+                    self.next().unwrap();
+                }
             } else if let Some(token) = self.read_until(is_whitespace) {
                 tokens.push(token);
             }
@@ -153,6 +161,14 @@ mod test {
     }
 
     #[test]
+    fn test_double_quote() {
+        let parser = Parser::new("\"hello\"");
+        let tokens = parser.into_tokens();
+        assert_eq!(&tokens, &tokens_from_str(&["hello"]));
+        assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello"]);
+    }
+
+    #[test]
     fn test_quote() {
         let parser = Parser::new("'hello' 'world'");
         let tokens = parser.into_tokens();
@@ -161,7 +177,7 @@ mod test {
     }
 
     #[test]
-    fn test_mixed() {
+    fn test_mixed_single_quote() {
         let parser = Parser::new("hello 'world'");
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello", " ", "world"]));
@@ -169,13 +185,41 @@ mod test {
     }
 
     #[test]
-    fn test_connected_quotes() {
+    fn test_mixed_double_quote() {
+        let parser = Parser::new("\"bar\"  \"shell's\"  \"foo\"");
+        let tokens = parser.into_tokens();
+        assert_eq!(
+            &tokens,
+            &tokens_from_str(&["bar", " ", "shell's", " ", "foo"])
+        );
+        assert_eq!(
+            Token::to_string_no_whitespace(&tokens),
+            ["bar", "shell's", "foo"]
+        );
+    }
+
+    #[test]
+    fn test_connected_single_quotes() {
         let parser = Parser::new("hello 'test''world'");
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello", " ", "test", "world"]));
         assert_eq!(
             Token::to_string_no_whitespace(&tokens),
             ["hello", "testworld"]
+        );
+    }
+
+    #[test]
+    fn test_connected_double_quotes() {
+        let parser = Parser::new("\"world  shell\"  \"hello\"\"test\"");
+        let tokens = parser.into_tokens();
+        assert_eq!(
+            &tokens,
+            &tokens_from_str(&["world  shell", " ", "hello", "test"])
+        );
+        assert_eq!(
+            Token::to_string_no_whitespace(&tokens),
+            ["world  shell", "hellotest"]
         );
     }
 }

@@ -27,7 +27,7 @@ impl TryFrom<String> for Cmd {
         let tokens = Token::to_string_no_whitespace(&tokens);
 
         let (command, args) = tokens.split_first().ok_or(CmdError::Empty)?;
-        let remaining = args.join("");
+        let remaining = args.join(" ");
 
         match command.as_str() {
             "exit" => Ok(Cmd::Builtin(BuiltinCmd::Exit(remaining))),
