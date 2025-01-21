@@ -1,10 +1,10 @@
 use anyhow::Result;
 
-use crate::{error::CommandError, Execute};
+use crate::{error::CmdError, Execute};
 
-use super::Command;
+use super::Cmd;
 
-pub enum BuiltinCommand {
+pub enum BuiltinCmd {
     Exit(String),
     Echo(String),
     Pwd,
@@ -12,65 +12,65 @@ pub enum BuiltinCommand {
     Type(String),
 }
 
-pub(super) enum ExecutableBuiltinCommand {
+pub(super) enum ExecBuiltinCmd {
     Exit(i32),
     Echo(String),
     Pwd,
     Cd(String),
-    Type(Box<Command>),
+    Type(Box<Cmd>),
 }
 
-impl TryFrom<BuiltinCommand> for ExecutableBuiltinCommand {
-    type Error = CommandError;
+impl TryFrom<BuiltinCmd> for ExecBuiltinCmd {
+    type Error = CmdError;
 
-    fn try_from(command: BuiltinCommand) -> Result<ExecutableBuiltinCommand, CommandError> {
+    fn try_from(command: BuiltinCmd) -> Result<ExecBuiltinCmd, CmdError> {
         match command {
-            BuiltinCommand::Exit(code) => Ok(ExecutableBuiltinCommand::Exit(code.parse()?)),
-            BuiltinCommand::Echo(echo) => Ok(ExecutableBuiltinCommand::Echo(echo)),
-            BuiltinCommand::Pwd => Ok(ExecutableBuiltinCommand::Pwd),
-            BuiltinCommand::Cd(directory) => Ok(ExecutableBuiltinCommand::Cd(directory)),
-            BuiltinCommand::Type(typ) => {
-                let command = Command::try_from(typ)?;
-                Ok(ExecutableBuiltinCommand::Type(Box::new(command)))
+            BuiltinCmd::Exit(code) => Ok(ExecBuiltinCmd::Exit(code.parse()?)),
+            BuiltinCmd::Echo(echo) => Ok(ExecBuiltinCmd::Echo(echo)),
+            BuiltinCmd::Pwd => Ok(ExecBuiltinCmd::Pwd),
+            BuiltinCmd::Cd(directory) => Ok(ExecBuiltinCmd::Cd(directory)),
+            BuiltinCmd::Type(typ) => {
+                let command = Cmd::try_from(typ)?;
+                Ok(ExecBuiltinCmd::Type(Box::new(command)))
             }
         }
     }
 }
 
-impl Execute for ExecutableBuiltinCommand {
+impl Execute for ExecBuiltinCmd {
     fn execute(self) -> Result<()> {
         match self {
-            ExecutableBuiltinCommand::Exit(code) => std::process::exit(code),
-            ExecutableBuiltinCommand::Echo(echo) => println!("{}", echo),
-            ExecutableBuiltinCommand::Pwd => {
+            ExecBuiltinCmd::Exit(code) => std::process::exit(code),
+            ExecBuiltinCmd::Echo(echo) => println!("{}", echo),
+            ExecBuiltinCmd::Pwd => {
                 let current_directory = std::env::current_dir()?;
                 println!("{}", current_directory.display());
             }
-            ExecutableBuiltinCommand::Cd(directory) => {
+            ExecBuiltinCmd::Cd(directory) => {
                 let expanded_directory = expand_home(&directory)?;
                 if std::env::set_current_dir(&expanded_directory).is_err() {
                     println!("cd: {}: No such file or directory", directory);
                 }
             }
-            ExecutableBuiltinCommand::Type(typ) => match *typ {
-                Command::Builtin(builtin_command) => {
+            ExecBuiltinCmd::Type(typ) => match *typ {
+                Cmd::Builtin(builtin_command) => {
                     let command_type = match builtin_command {
-                        BuiltinCommand::Exit(_) => "exit",
-                        BuiltinCommand::Echo(_) => "echo",
-                        BuiltinCommand::Pwd => "pwd",
-                        BuiltinCommand::Cd(_) => "cd",
-                        BuiltinCommand::Type(_) => "type",
+                        BuiltinCmd::Exit(_) => "exit",
+                        BuiltinCmd::Echo(_) => "echo",
+                        BuiltinCmd::Pwd => "pwd",
+                        BuiltinCmd::Cd(_) => "cd",
+                        BuiltinCmd::Type(_) => "type",
                     };
                     println!("{} is a shell builtin", command_type);
                 }
-                Command::File(executable_file_command) => {
+                Cmd::ExecFileCmd(executable_file_command) => {
                     println!(
                         "{} is {}",
                         executable_file_command.command,
                         executable_file_command.path.display()
                     )
                 }
-                Command::Invalid(command) => println!("{}: not found", command),
+                Cmd::Invalid(command) => println!("{}: not found", command),
             },
         }
         Ok(())

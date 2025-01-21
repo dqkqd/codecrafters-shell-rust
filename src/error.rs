@@ -3,7 +3,7 @@ use std::{env::VarError, num::ParseIntError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum CommandError {
+pub enum CmdError {
     #[error("parse int error")]
     ParseIntError(#[from] ParseIntError),
 
@@ -11,5 +11,5 @@ pub enum CommandError {
     VarError(#[from] VarError),
 
     #[error("missing command {0}")]
-    MissingCommand(String),
+    MissingCmd(String),
 }

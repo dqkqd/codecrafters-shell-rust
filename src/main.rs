@@ -1,5 +1,5 @@
 use anyhow::Result;
-use codecrafters_shell::{Command, Execute};
+use codecrafters_shell::{Cmd, Execute};
 use std::io::{self, Write};
 
 fn main() -> Result<()> {
@@ -13,7 +13,7 @@ fn main() -> Result<()> {
         let mut input = String::new();
         stdin.read_line(&mut input).unwrap();
 
-        let command: Command = input.try_into().unwrap();
+        let command: Cmd = input.try_into().unwrap();
         command.execute()?;
     }
 }
