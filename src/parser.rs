@@ -74,6 +74,31 @@ impl Parser<'_> {
         Some(Token::Value(token))
     }
 
+    fn read_until_with_escape<P>(&mut self, p: P) -> Option<Token>
+    where
+        P: Fn(&u8) -> bool,
+    {
+        let mut token = Vec::new();
+
+        loop {
+            match self.next() {
+                Some(c) if p(&c) => {
+                    self.prev();
+                    break;
+                }
+                None => break,
+                Some(b'\\') => match self.next() {
+                    Some(c) => token.push(c),
+                    None => break,
+                },
+                Some(c) => token.push(c),
+            }
+        }
+
+        let token = String::from_utf8(token).ok()?;
+        Some(Token::Value(token))
+    }
+
     fn skip_whitespace(&mut self) {
         loop {
             match self.peek() {
@@ -103,7 +128,7 @@ impl Parser<'_> {
                     // skip the last one
                     self.next().unwrap();
                 }
-            } else if let Some(token) = self.read_until(is_whitespace) {
+            } else if let Some(token) = self.read_until_with_escape(is_whitespace) {
                 tokens.push(token);
             }
         }
@@ -220,6 +245,28 @@ mod test {
         assert_eq!(
             Token::to_string_no_whitespace(&tokens),
             ["world  shell", "hellotest"]
+        );
+    }
+
+    #[test]
+    fn test_escape() {
+        let parser = Parser::new("world\\ \\ \\ \\ \\ \\ script");
+        let tokens = parser.into_tokens();
+        assert_eq!(&tokens, &tokens_from_str(&["world      script"]));
+        assert_eq!(
+            Token::to_string_no_whitespace(&tokens),
+            ["world      script"]
+        );
+    }
+
+    #[test]
+    fn test_double_quote_with_escape() {
+        let parser = Parser::new("\"before\\   after\"");
+        let tokens = parser.into_tokens();
+        assert_eq!(&tokens, &tokens_from_str(&["before\\   after"]));
+        assert_eq!(
+            Token::to_string_no_whitespace(&tokens),
+            ["before\\   after"]
         );
     }
 }
