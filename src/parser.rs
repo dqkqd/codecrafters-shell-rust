@@ -53,7 +53,7 @@ impl Parser<'_> {
         self.pos -= 1;
     }
 
-    fn read_until<P>(&mut self, p: P) -> Option<Token>
+    fn read_all<P>(&mut self, until: P) -> Option<Token>
     where
         P: Fn(&u8) -> bool,
     {
@@ -61,7 +61,7 @@ impl Parser<'_> {
 
         loop {
             match self.next() {
-                Some(c) if p(&c) => {
+                Some(c) if until(&c) => {
                     self.prev();
                     break;
                 }
@@ -74,7 +74,7 @@ impl Parser<'_> {
         Some(Token::Value(token))
     }
 
-    fn read_until_with_escape<P>(&mut self, p: P) -> Option<Token>
+    fn read_raw<P>(&mut self, until: P) -> Option<Token>
     where
         P: Fn(&u8) -> bool,
     {
@@ -82,13 +82,44 @@ impl Parser<'_> {
 
         loop {
             match self.next() {
-                Some(c) if p(&c) => {
+                Some(c) if until(&c) => {
                     self.prev();
                     break;
                 }
                 None => break,
                 Some(b'\\') => match self.next() {
                     Some(c) => token.push(c),
+                    None => break,
+                },
+                Some(c) => token.push(c),
+            }
+        }
+
+        let token = String::from_utf8(token).ok()?;
+        Some(Token::Value(token))
+    }
+
+    fn read_in_double_quote<P>(&mut self, until: P) -> Option<Token>
+    where
+        P: Fn(&u8) -> bool,
+    {
+        let mut token = Vec::new();
+
+        loop {
+            match self.next() {
+                Some(c) if until(&c) => {
+                    self.prev();
+                    break;
+                }
+                None => break,
+                Some(b'\\') => match self.next() {
+                    Some(c) if c == b'$' || c == b'`' || c == b'"' || c == b'\\' || c == b'\n' => {
+                        token.push(c)
+                    }
+                    Some(c) => {
+                        token.push(b'\\');
+                        token.push(c);
+                    }
                     None => break,
                 },
                 Some(c) => token.push(c),
@@ -116,19 +147,19 @@ impl Parser<'_> {
                 self.skip_whitespace();
             } else if c == &b'\'' {
                 self.next().unwrap();
-                if let Some(token) = self.read_until(|c| c == &b'\'') {
+                if let Some(token) = self.read_all(|c| c == &b'\'') {
                     tokens.push(token);
                     // skip the last one
                     self.next().unwrap();
                 }
             } else if c == &b'"' {
                 self.next().unwrap();
-                if let Some(token) = self.read_until(|c| c == &b'"') {
+                if let Some(token) = self.read_in_double_quote(|c| c == &b'"') {
                     tokens.push(token);
                     // skip the last one
                     self.next().unwrap();
                 }
-            } else if let Some(token) = self.read_until_with_escape(is_whitespace) {
+            } else if let Some(token) = self.read_raw(is_whitespace) {
                 tokens.push(token);
             }
         }
@@ -159,7 +190,7 @@ mod test {
 
     #[test]
     fn test_single() {
-        let parser = Parser::new("hello");
+        let parser = Parser::new(r#"hello"#);
         let tokens = parser.into_tokens();
 
         assert_eq!(&tokens, &tokens_from_str(&["hello"]));
@@ -187,7 +218,7 @@ mod test {
 
     #[test]
     fn test_double_quote() {
-        let parser = Parser::new("\"hello\"");
+        let parser = Parser::new(r#""hello""#);
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello"]));
         assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello"]);
@@ -211,7 +242,7 @@ mod test {
 
     #[test]
     fn test_mixed_double_quote() {
-        let parser = Parser::new("\"bar\"  \"shell's\"  \"foo\"");
+        let parser = Parser::new(r#""bar"  "shell's"  "foo""#);
         let tokens = parser.into_tokens();
         assert_eq!(
             &tokens,
@@ -236,7 +267,7 @@ mod test {
 
     #[test]
     fn test_connected_double_quotes() {
-        let parser = Parser::new("\"world  shell\"  \"hello\"\"test\"");
+        let parser = Parser::new(r#""world  shell"  "hello""test""#);
         let tokens = parser.into_tokens();
         assert_eq!(
             &tokens,
@@ -250,7 +281,7 @@ mod test {
 
     #[test]
     fn test_escape() {
-        let parser = Parser::new("world\\ \\ \\ \\ \\ \\ script");
+        let parser = Parser::new(r#"world\ \ \ \ \ \ script"#);
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["world      script"]));
         assert_eq!(
@@ -261,12 +292,37 @@ mod test {
 
     #[test]
     fn test_double_quote_with_escape() {
-        let parser = Parser::new("\"before\\   after\"");
+        let parser = Parser::new(r#""before\   after""#);
         let tokens = parser.into_tokens();
-        assert_eq!(&tokens, &tokens_from_str(&["before\\   after"]));
+        assert_eq!(&tokens, &tokens_from_str(&[r#"before\   after"#]));
         assert_eq!(
             Token::to_string_no_whitespace(&tokens),
-            ["before\\   after"]
+            [r#"before\   after"#]
+        );
+    }
+
+    #[test]
+    fn test_escape_in_double_quote() {
+        let parser = Parser::new(r#""hello'script'\\n'world""#);
+        let tokens = parser.into_tokens();
+        assert_eq!(&tokens, &tokens_from_str(&[r#"hello'script'\n'world"#]));
+        assert_eq!(
+            Token::to_string_no_whitespace(&tokens),
+            [r#"hello'script'\n'world"#]
+        );
+    }
+
+    #[test]
+    fn test_escape_in_double_quote_trailing() {
+        let parser = Parser::new(r#""hello\"insidequotes"script\""#);
+        let tokens = parser.into_tokens();
+        assert_eq!(
+            &tokens,
+            &tokens_from_str(&[r#"hello"insidequotes"#, r#"script""#])
+        );
+        assert_eq!(
+            Token::to_string_no_whitespace(&tokens),
+            [r#"hello"insidequotesscript""#]
         );
     }
 }
