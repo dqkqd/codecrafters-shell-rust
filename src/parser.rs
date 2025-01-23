@@ -1,13 +1,15 @@
+use anyhow::Result;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Token {
+pub enum RawToken {
     Whitespace,
     Value(String),
 }
 
-impl Token {
-    pub fn to_string_no_whitespace(tokens: &[Token]) -> Vec<String> {
+impl RawToken {
+    pub fn to_string_no_whitespace(tokens: &[RawToken]) -> Vec<String> {
         tokens
-            .split(|token| token == &Token::Whitespace)
+            .split(|token| token == &RawToken::Whitespace)
             .map(|tokens| {
                 let strings: Vec<String> = tokens.iter().map(String::from).collect();
                 strings.join("")
@@ -17,11 +19,11 @@ impl Token {
     }
 }
 
-impl From<&Token> for String {
-    fn from(token: &Token) -> String {
+impl From<&RawToken> for String {
+    fn from(token: &RawToken) -> String {
         match token {
-            Token::Whitespace => " ".into(),
-            Token::Value(v) => v.clone(),
+            RawToken::Whitespace => " ".into(),
+            RawToken::Value(v) => v.clone(),
         }
     }
 }
@@ -53,7 +55,7 @@ impl Parser<'_> {
         self.pos -= 1;
     }
 
-    fn read_all<P>(&mut self, until: P) -> Option<Token>
+    fn read_all<P>(&mut self, until: P) -> Result<RawToken>
     where
         P: Fn(&u8) -> bool,
     {
@@ -70,11 +72,11 @@ impl Parser<'_> {
             }
         }
 
-        let token = String::from_utf8(token).ok()?;
-        Some(Token::Value(token))
+        let token = String::from_utf8(token)?;
+        Ok(RawToken::Value(token))
     }
 
-    fn read_raw<P>(&mut self, until: P) -> Option<Token>
+    fn read_raw<P>(&mut self, until: P) -> Result<RawToken>
     where
         P: Fn(&u8) -> bool,
     {
@@ -95,11 +97,11 @@ impl Parser<'_> {
             }
         }
 
-        let token = String::from_utf8(token).ok()?;
-        Some(Token::Value(token))
+        let token = String::from_utf8(token)?;
+        Ok(RawToken::Value(token))
     }
 
-    fn read_in_double_quote<P>(&mut self, until: P) -> Option<Token>
+    fn read_in_double_quote<P>(&mut self, until: P) -> Result<RawToken>
     where
         P: Fn(&u8) -> bool,
     {
@@ -126,8 +128,8 @@ impl Parser<'_> {
             }
         }
 
-        let token = String::from_utf8(token).ok()?;
-        Some(Token::Value(token))
+        let token = String::from_utf8(token)?;
+        Ok(RawToken::Value(token))
     }
 
     fn skip_whitespace(&mut self) {
@@ -139,27 +141,27 @@ impl Parser<'_> {
         }
     }
 
-    pub fn into_tokens(mut self) -> Vec<Token> {
+    pub fn into_tokens(mut self) -> Vec<RawToken> {
         let mut tokens = Vec::new();
         while let Some(c) = self.peek() {
             if is_whitespace(c) {
-                tokens.push(Token::Whitespace);
+                tokens.push(RawToken::Whitespace);
                 self.skip_whitespace();
             } else if c == &b'\'' {
                 self.next().unwrap();
-                if let Some(token) = self.read_all(|c| c == &b'\'') {
+                if let Ok(token) = self.read_all(|c| c == &b'\'') {
                     tokens.push(token);
                     // skip the last one
                     self.next().unwrap();
                 }
             } else if c == &b'"' {
                 self.next().unwrap();
-                if let Some(token) = self.read_in_double_quote(|c| c == &b'"') {
+                if let Ok(token) = self.read_in_double_quote(|c| c == &b'"') {
                     tokens.push(token);
                     // skip the last one
                     self.next().unwrap();
                 }
-            } else if let Some(token) = self.read_raw(is_whitespace) {
+            } else if let Ok(token) = self.read_raw(is_whitespace) {
                 tokens.push(token);
             }
         }
@@ -176,13 +178,13 @@ fn is_whitespace(c: &u8) -> bool {
 mod test {
     use super::*;
 
-    fn tokens_from_str(s: &[&str]) -> Vec<Token> {
+    fn tokens_from_str(s: &[&str]) -> Vec<RawToken> {
         s.iter()
             .map(|v| {
                 if v == &" " {
-                    Token::Whitespace
+                    RawToken::Whitespace
                 } else {
-                    Token::Value(v.to_string())
+                    RawToken::Value(v.to_string())
                 }
             })
             .collect()
@@ -194,7 +196,7 @@ mod test {
         let tokens = parser.into_tokens();
 
         assert_eq!(&tokens, &tokens_from_str(&["hello"]));
-        assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello"]);
+        assert_eq!(RawToken::to_string_no_whitespace(&tokens), ["hello"]);
     }
 
     #[test]
@@ -203,7 +205,7 @@ mod test {
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello", " ", "world!!"]));
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             ["hello", "world!!"]
         );
     }
@@ -213,7 +215,7 @@ mod test {
         let parser = Parser::new("'hello'");
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello"]));
-        assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello"]);
+        assert_eq!(RawToken::to_string_no_whitespace(&tokens), ["hello"]);
     }
 
     #[test]
@@ -221,7 +223,7 @@ mod test {
         let parser = Parser::new(r#""hello""#);
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello"]));
-        assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello"]);
+        assert_eq!(RawToken::to_string_no_whitespace(&tokens), ["hello"]);
     }
 
     #[test]
@@ -229,7 +231,10 @@ mod test {
         let parser = Parser::new("'hello' 'world'");
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello", " ", "world"]));
-        assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello", "world"]);
+        assert_eq!(
+            RawToken::to_string_no_whitespace(&tokens),
+            ["hello", "world"]
+        );
     }
 
     #[test]
@@ -237,7 +242,10 @@ mod test {
         let parser = Parser::new("hello 'world'");
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello", " ", "world"]));
-        assert_eq!(Token::to_string_no_whitespace(&tokens), ["hello", "world"]);
+        assert_eq!(
+            RawToken::to_string_no_whitespace(&tokens),
+            ["hello", "world"]
+        );
     }
 
     #[test]
@@ -249,7 +257,7 @@ mod test {
             &tokens_from_str(&["bar", " ", "shell's", " ", "foo"])
         );
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             ["bar", "shell's", "foo"]
         );
     }
@@ -260,7 +268,7 @@ mod test {
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["hello", " ", "test", "world"]));
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             ["hello", "testworld"]
         );
     }
@@ -274,7 +282,7 @@ mod test {
             &tokens_from_str(&["world  shell", " ", "hello", "test"])
         );
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             ["world  shell", "hellotest"]
         );
     }
@@ -285,7 +293,7 @@ mod test {
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&["world      script"]));
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             ["world      script"]
         );
     }
@@ -296,7 +304,7 @@ mod test {
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&[r#"before\   after"#]));
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             [r#"before\   after"#]
         );
     }
@@ -307,7 +315,7 @@ mod test {
         let tokens = parser.into_tokens();
         assert_eq!(&tokens, &tokens_from_str(&[r#"hello'script'\n'world"#]));
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             [r#"hello'script'\n'world"#]
         );
     }
@@ -321,7 +329,7 @@ mod test {
             &tokens_from_str(&[r#"hello"insidequotes"#, r#"script""#])
         );
         assert_eq!(
-            Token::to_string_no_whitespace(&tokens),
+            RawToken::to_string_no_whitespace(&tokens),
             [r#"hello"insidequotesscript""#]
         );
     }

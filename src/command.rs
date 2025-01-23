@@ -7,7 +7,7 @@ use exec_file::ExecFileCmd;
 
 use crate::{
     error::CmdError,
-    parser::{Parser, Token},
+    parser::{Parser, RawToken},
     Execute,
 };
 
@@ -24,7 +24,7 @@ impl TryFrom<String> for Cmd {
     fn try_from(command: String) -> Result<Cmd, CmdError> {
         let parser = Parser::new(&command);
         let tokens = parser.into_tokens();
-        let tokens = Token::to_string_no_whitespace(&tokens);
+        let tokens = RawToken::to_string_no_whitespace(&tokens);
 
         let (command, args) = tokens.split_first().ok_or(CmdError::Empty)?;
         let remaining = args.join(" ");
