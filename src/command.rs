@@ -6,8 +6,8 @@ use builtin::{BuiltinCmd, ExecBuiltinCmd};
 use exec_file::ExecFileCmd;
 
 use crate::{
+    execute::{Execute, ExecutedOutput},
     token::{parse_tokens, ValueToken},
-    Execute, ExecutedOutput,
 };
 
 // TODO: lifetime

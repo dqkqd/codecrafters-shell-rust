@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::{Execute, ExecutedOutput};
+use crate::execute::{Execute, ExecutedOutput};
 
 use super::{parse_tokens, Cmd};
 

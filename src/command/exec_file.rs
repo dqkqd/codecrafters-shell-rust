@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::{error::CmdError, Execute, ExecutedOutput};
+use crate::{
+    error::CmdError,
+    execute::{Execute, ExecutedOutput},
+};
 
 pub struct ExecFileCmd {
     pub command: String,
