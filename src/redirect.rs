@@ -29,12 +29,8 @@ impl Redirector {
     }
 
     pub fn write_stdout<T: AsRef<[u8]>>(&self, msg: T) -> Result<()> {
-        if msg.as_ref().is_empty() {
-            return Ok(());
-        }
-
         let msg = msg.as_ref().trim_ascii_end();
-        if self.stdout.is_empty() {
+        if self.stdout.is_empty() && !msg.is_empty() {
             let mut stdout = io::stdout().lock();
             stdout.write_all(msg.as_ref())?;
             stdout.write_all(b"\n")?;
@@ -45,12 +41,8 @@ impl Redirector {
     }
 
     pub fn write_stderr<T: AsRef<[u8]>>(&self, msg: T) -> Result<()> {
-        if msg.as_ref().is_empty() {
-            return Ok(());
-        }
-
         let msg = msg.as_ref().trim_ascii_end();
-        if self.stderr.is_empty() {
+        if self.stderr.is_empty() && !msg.is_empty() {
             let mut stderr = io::stderr().lock();
             stderr.write_all(msg.as_ref())?;
             stderr.write_all(b"\n")?;
@@ -70,8 +62,10 @@ fn write_to_redirected_files<T: AsRef<[u8]>>(msg: T, redirects: &[RedirectToken]
             .write(true)
             .open(path)
         {
-            let _ = file.write_all(msg.as_ref());
-            let _ = file.write_all(b"\n");
+            if !msg.as_ref().is_empty() {
+                let _ = file.write_all(msg.as_ref());
+                let _ = file.write_all(b"\n");
+            }
         }
     }
 }

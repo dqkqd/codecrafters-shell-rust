@@ -38,19 +38,20 @@ impl BuiltinCmd {
 
 impl Execute for ExecBuiltinCmd {
     fn execute(self) -> Result<ExecutedOutput> {
-        let stdout = match self {
+        let output = ExecutedOutput::new();
+        let output = match self {
             ExecBuiltinCmd::Exit(code) => std::process::exit(code),
-            ExecBuiltinCmd::Echo(echo) => echo,
+            ExecBuiltinCmd::Echo(echo) => output.with_stdout(&echo),
             ExecBuiltinCmd::Pwd => {
                 let current_directory = std::env::current_dir()?;
-                current_directory.display().to_string()
+                ExecutedOutput::new().with_stdout(current_directory.display().to_string())
             }
             ExecBuiltinCmd::Cd(directory) => {
                 let expanded_directory = expand_home(&directory)?;
                 if std::env::set_current_dir(&expanded_directory).is_err() {
-                    format!("cd: {}: No such file or directory", directory)
+                    output.with_stderr(format!("cd: {}: No such file or directory", directory))
                 } else {
-                    "".to_string()
+                    output.with_stdout("")
                 }
             }
             ExecBuiltinCmd::Type(typ) => match *typ {
@@ -62,20 +63,18 @@ impl Execute for ExecBuiltinCmd {
                         BuiltinCmd::Cd(_) => "cd",
                         BuiltinCmd::Type(_) => "type",
                     };
-                    format!("{} is a shell builtin", command_type)
+                    output.with_stdout(format!("{} is a shell builtin", command_type))
                 }
-                Cmd::ExecFile(executable_file_command) => {
-                    format!(
-                        "{} is {}",
-                        executable_file_command.command,
-                        executable_file_command.path.display()
-                    )
-                }
-                Cmd::Invalid(command) => format!("{}: not found", command),
+                Cmd::ExecFile(executable_file_command) => output.with_stdout(format!(
+                    "{} is {}",
+                    executable_file_command.command,
+                    executable_file_command.path.display()
+                )),
+                Cmd::Invalid(command) => output.with_stderr(format!("{}: not found", command)),
             },
         };
 
-        Ok(ExecutedOutput::new().with_stdout(stdout))
+        Ok(output)
     }
 }
 
