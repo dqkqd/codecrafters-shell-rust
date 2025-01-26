@@ -40,6 +40,8 @@ pub enum Token {
 pub(crate) enum RedirectToken {
     Stdout(PathBuf),
     Stderr(PathBuf),
+    StdoutAppend(PathBuf),
+    StderrAppend(PathBuf),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,6 +57,8 @@ impl RedirectToken {
         match self {
             RedirectToken::Stdout(path_buf) => path_buf.as_path(),
             RedirectToken::Stderr(path_buf) => path_buf.as_path(),
+            RedirectToken::StdoutAppend(path_buf) => path_buf.as_path(),
+            RedirectToken::StderrAppend(path_buf) => path_buf.as_path(),
         }
     }
 }
@@ -112,9 +116,19 @@ impl TokenParser {
                     let redirect_token = RedirectToken::Stdout(token_to_path(token)?);
                     Token::Redirect(redirect_token)
                 }
+                Some(RawToken(t)) if t == b">>" || t == b"1>>" => {
+                    let token = self.next().with_context(|| "invalid redirect token")?;
+                    let redirect_token = RedirectToken::StdoutAppend(token_to_path(token)?);
+                    Token::Redirect(redirect_token)
+                }
                 Some(RawToken(t)) if t == b"2>" => {
                     let token = self.next().with_context(|| "invalid redirect token")?;
                     let redirect_token = RedirectToken::Stderr(token_to_path(token)?);
+                    Token::Redirect(redirect_token)
+                }
+                Some(RawToken(t)) if t == b"2>>" => {
+                    let token = self.next().with_context(|| "invalid redirect token")?;
+                    let redirect_token = RedirectToken::StderrAppend(token_to_path(token)?);
                     Token::Redirect(redirect_token)
                 }
                 Some(t) => Token::Value(ValueToken(t.into_inner())),
