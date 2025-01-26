@@ -1,10 +1,10 @@
 use anyhow::Result;
 
-use crate::{error::CmdError, Execute};
+use crate::{Execute, ExecutedOutput};
 
-use super::Cmd;
+use super::{parse_tokens, Cmd};
 
-pub enum BuiltinCmd {
+pub(crate) enum BuiltinCmd {
     Exit(String),
     Echo(String),
     Pwd,
@@ -12,7 +12,7 @@ pub enum BuiltinCmd {
     Type(String),
 }
 
-pub(super) enum ExecBuiltinCmd {
+pub(crate) enum ExecBuiltinCmd {
     Exit(i32),
     Echo(String),
     Pwd,
@@ -20,17 +20,16 @@ pub(super) enum ExecBuiltinCmd {
     Type(Box<Cmd>),
 }
 
-impl TryFrom<BuiltinCmd> for ExecBuiltinCmd {
-    type Error = CmdError;
-
-    fn try_from(command: BuiltinCmd) -> Result<ExecBuiltinCmd, CmdError> {
-        match command {
+impl BuiltinCmd {
+    pub fn into_exec(self) -> Result<ExecBuiltinCmd> {
+        match self {
             BuiltinCmd::Exit(code) => Ok(ExecBuiltinCmd::Exit(code.parse()?)),
             BuiltinCmd::Echo(echo) => Ok(ExecBuiltinCmd::Echo(echo)),
             BuiltinCmd::Pwd => Ok(ExecBuiltinCmd::Pwd),
             BuiltinCmd::Cd(directory) => Ok(ExecBuiltinCmd::Cd(directory)),
             BuiltinCmd::Type(typ) => {
-                let command = Cmd::try_from(typ)?;
+                let (_, values) = parse_tokens(&typ)?;
+                let command = Cmd::from_value_tokens(values)?;
                 Ok(ExecBuiltinCmd::Type(Box::new(command)))
             }
         }
@@ -38,18 +37,20 @@ impl TryFrom<BuiltinCmd> for ExecBuiltinCmd {
 }
 
 impl Execute for ExecBuiltinCmd {
-    fn execute(self) -> Result<()> {
-        match self {
+    fn execute(self) -> Result<ExecutedOutput> {
+        let stdout = match self {
             ExecBuiltinCmd::Exit(code) => std::process::exit(code),
-            ExecBuiltinCmd::Echo(echo) => println!("{}", echo),
+            ExecBuiltinCmd::Echo(echo) => echo,
             ExecBuiltinCmd::Pwd => {
                 let current_directory = std::env::current_dir()?;
-                println!("{}", current_directory.display());
+                current_directory.display().to_string()
             }
             ExecBuiltinCmd::Cd(directory) => {
                 let expanded_directory = expand_home(&directory)?;
                 if std::env::set_current_dir(&expanded_directory).is_err() {
-                    println!("cd: {}: No such file or directory", directory);
+                    format!("cd: {}: No such file or directory", directory)
+                } else {
+                    "".to_string()
                 }
             }
             ExecBuiltinCmd::Type(typ) => match *typ {
@@ -61,19 +62,20 @@ impl Execute for ExecBuiltinCmd {
                         BuiltinCmd::Cd(_) => "cd",
                         BuiltinCmd::Type(_) => "type",
                     };
-                    println!("{} is a shell builtin", command_type);
+                    format!("{} is a shell builtin", command_type)
                 }
-                Cmd::ExecFileCmd(executable_file_command) => {
-                    println!(
+                Cmd::ExecFile(executable_file_command) => {
+                    format!(
                         "{} is {}",
                         executable_file_command.command,
                         executable_file_command.path.display()
                     )
                 }
-                Cmd::Invalid(command) => println!("{}: not found", command),
+                Cmd::Invalid(command) => format!("{}: not found", command),
             },
-        }
-        Ok(())
+        };
+
+        Ok(ExecutedOutput::new().with_stdout(stdout))
     }
 }
 

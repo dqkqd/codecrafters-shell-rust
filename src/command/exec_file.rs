@@ -1,11 +1,8 @@
-use std::{
-    io::{self, Write},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::{error::CmdError, Execute};
+use crate::{error::CmdError, Execute, ExecutedOutput};
 
 pub struct ExecFileCmd {
     pub command: String,
@@ -31,12 +28,13 @@ impl ExecFileCmd {
 }
 
 impl Execute for ExecFileCmd {
-    fn execute(self) -> Result<()> {
+    fn execute(self) -> Result<ExecutedOutput> {
         let output = std::process::Command::new(self.command)
             .args(self.args)
             .output()?;
-        io::stdout().write_all(&output.stdout)?;
-        io::stderr().write_all(&output.stderr)?;
-        Ok(())
+        let (stdout, stderr) = (output.stdout, output.stderr);
+        Ok(ExecutedOutput::new()
+            .with_stdout(stdout)
+            .with_stderr(stderr))
     }
 }

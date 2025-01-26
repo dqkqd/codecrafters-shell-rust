@@ -1,4 +1,4 @@
-use std::{env::VarError, num::ParseIntError};
+use std::{env::VarError, num::ParseIntError, string::FromUtf8Error};
 
 use thiserror::Error;
 
@@ -15,4 +15,7 @@ pub enum CmdError {
 
     #[error("empty command")]
     Empty,
+
+    #[error("from utf 8 error {0}")]
+    FromUtf8Error(#[from] FromUtf8Error),
 }

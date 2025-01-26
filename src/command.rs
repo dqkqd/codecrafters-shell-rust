@@ -6,40 +6,40 @@ use builtin::{BuiltinCmd, ExecBuiltinCmd};
 use exec_file::ExecFileCmd;
 
 use crate::{
-    error::CmdError,
-    parser::{Parser, RawToken},
-    Execute,
+    token::{parse_tokens, ValueToken},
+    Execute, ExecutedOutput,
 };
 
 // TODO: lifetime
-pub enum Cmd {
+pub(crate) enum Cmd {
     Builtin(BuiltinCmd),
-    ExecFileCmd(ExecFileCmd),
+    ExecFile(ExecFileCmd),
     Invalid(String),
 }
 
-impl TryFrom<String> for Cmd {
-    type Error = CmdError;
+impl Cmd {
+    pub fn from_value_tokens(mut values: Vec<ValueToken>) -> Result<Cmd> {
+        let command = values.remove(0);
 
-    fn try_from(command: String) -> Result<Cmd, CmdError> {
-        let parser = Parser::new(&command);
-        let tokens = parser.into_tokens();
-        let tokens = RawToken::to_string_no_whitespace(&tokens);
+        let args: Vec<String> = values
+            .into_iter()
+            .filter_map(|v| v.try_into().ok())
+            .collect();
 
-        let (command, args) = tokens.split_first().ok_or(CmdError::Empty)?;
-        let remaining = args.join(" ");
-
-        match command.as_str() {
-            "exit" => Ok(Cmd::Builtin(BuiltinCmd::Exit(remaining))),
-            "echo" => Ok(Cmd::Builtin(BuiltinCmd::Echo(remaining))),
-            "pwd" => Ok(Cmd::Builtin(BuiltinCmd::Pwd)),
-            "cd" => Ok(Cmd::Builtin(BuiltinCmd::Cd(remaining))),
-            "type" => Ok(Cmd::Builtin(BuiltinCmd::Type(remaining))),
+        match command.0.as_slice() {
+            b"exit" => Ok(Cmd::Builtin(BuiltinCmd::Exit(
+                args.first().cloned().unwrap_or_default(),
+            ))),
+            b"pwd" => Ok(Cmd::Builtin(BuiltinCmd::Pwd)),
+            b"echo" => Ok(Cmd::Builtin(BuiltinCmd::Echo(args.join(" ")))),
+            b"cd" => Ok(Cmd::Builtin(BuiltinCmd::Cd(args.join(" ")))),
+            b"type" => Ok(Cmd::Builtin(BuiltinCmd::Type(args.join(" ")))),
             _ => {
-                if let Ok(exec_file_cmd) = ExecFileCmd::new(command.clone(), args.to_vec()) {
-                    Ok(Cmd::ExecFileCmd(exec_file_cmd))
+                let command: String = command.try_into()?;
+                if let Ok(exec_file_cmd) = ExecFileCmd::new(command.clone(), args) {
+                    Ok(Cmd::ExecFile(exec_file_cmd))
                 } else {
-                    Ok(Cmd::Invalid(command.clone()))
+                    Ok(Cmd::Invalid(command))
                 }
             }
         }
@@ -47,17 +47,18 @@ impl TryFrom<String> for Cmd {
 }
 
 impl Execute for Cmd {
-    fn execute(self) -> Result<()> {
-        match self {
+    fn execute(self) -> Result<ExecutedOutput> {
+        let output = match self {
             Cmd::Builtin(builtin_command) => {
-                let executable_command: ExecBuiltinCmd = builtin_command.try_into()?;
-                executable_command.execute()?;
+                let executable_command: ExecBuiltinCmd = builtin_command.into_exec()?;
+                executable_command.execute()?
             }
-            Cmd::ExecFileCmd(executable_file_command) => {
-                executable_file_command.execute()?;
+            Cmd::ExecFile(executable_file_command) => executable_file_command.execute()?,
+            Cmd::Invalid(command) => {
+                ExecutedOutput::new().with_stdout(format!("{}: command not found", command))
             }
-            Cmd::Invalid(command) => println!("{}: command not found", command),
-        }
-        Ok(())
+        };
+
+        Ok(output)
     }
 }
