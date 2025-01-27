@@ -1,21 +1,11 @@
-mod raw;
-
 use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
-use raw::RawToken;
-use raw::RawTokenParser;
-use raw::WHITESPACE;
 
-use crate::error::CmdError;
-
-pub(crate) fn parse_tokens(s: &str) -> Result<(Vec<RedirectToken>, Vec<ValueToken>)> {
-    let raw_token_parser = RawTokenParser::new(s);
-    let raw_tokens = raw_token_parser.parse();
-
-    let parser = TokenParser::new(raw_tokens);
+pub(crate) fn parse_tokens(tokens: Vec<String>) -> Result<(Vec<RedirectToken>, Vec<ValueToken>)> {
+    let parser = TokenParser::new(tokens);
     let tokens = parser.parse()?;
 
     let mut redirects = Vec::new();
@@ -37,19 +27,14 @@ pub enum Token {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct ValueToken(pub String);
+
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RedirectToken {
     Stdout(PathBuf),
     Stderr(PathBuf),
     StdoutAppend(PathBuf),
     StderrAppend(PathBuf),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ValueToken(pub Vec<u8>);
-
-pub struct TokenParser {
-    input: Vec<RawToken>,
-    pos: usize,
 }
 
 impl RedirectToken {
@@ -63,39 +48,20 @@ impl RedirectToken {
     }
 }
 
-impl ValueToken {
-    pub fn concat(values: Vec<ValueToken>) -> Result<String> {
-        let values: Vec<u8> = values.into_iter().fold(Vec::new(), |mut acc, e| {
-            if !acc.is_empty() {
-                acc.push(WHITESPACE);
-            }
-            acc.extend(e.0);
-            acc
-        });
-
-        let value = String::from_utf8(values)?;
-        Ok(value)
-    }
-}
-
-impl TryFrom<ValueToken> for String {
-    type Error = CmdError;
-
-    fn try_from(value: ValueToken) -> std::result::Result<Self, Self::Error> {
-        let s = String::from_utf8(value.0)?;
-        Ok(s)
-    }
+pub struct TokenParser {
+    input: Vec<String>,
+    pos: usize,
 }
 
 impl TokenParser {
-    fn new(tokens: Vec<RawToken>) -> TokenParser {
+    fn new(tokens: Vec<String>) -> TokenParser {
         TokenParser {
             input: tokens,
             pos: 0,
         }
     }
 
-    fn next(&mut self) -> Option<RawToken> {
+    fn next(&mut self) -> Option<String> {
         let c = self.input.get(self.pos).cloned()?;
         self.pos += 1;
         Some(c)
@@ -104,34 +70,29 @@ impl TokenParser {
     fn parse(mut self) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
 
-        let token_to_path = |t: RawToken| -> Result<PathBuf> {
-            let path = String::from_utf8(t.into_inner())?;
-            Ok(PathBuf::from(path))
-        };
-
         loop {
             let token = match self.next() {
-                Some(RawToken(t)) if t == b">" || t == b"1>" => {
+                Some(t) if t == ">" || t == "1>" => {
                     let token = self.next().with_context(|| "invalid redirect token")?;
-                    let redirect_token = RedirectToken::Stdout(token_to_path(token)?);
+                    let redirect_token = RedirectToken::Stdout(token.into());
                     Token::Redirect(redirect_token)
                 }
-                Some(RawToken(t)) if t == b">>" || t == b"1>>" => {
+                Some(t) if t == ">>" || t == "1>>" => {
                     let token = self.next().with_context(|| "invalid redirect token")?;
-                    let redirect_token = RedirectToken::StdoutAppend(token_to_path(token)?);
+                    let redirect_token = RedirectToken::StdoutAppend(token.into());
                     Token::Redirect(redirect_token)
                 }
-                Some(RawToken(t)) if t == b"2>" => {
+                Some(t) if t == "2>" => {
                     let token = self.next().with_context(|| "invalid redirect token")?;
-                    let redirect_token = RedirectToken::Stderr(token_to_path(token)?);
+                    let redirect_token = RedirectToken::Stderr(token.into());
                     Token::Redirect(redirect_token)
                 }
-                Some(RawToken(t)) if t == b"2>>" => {
+                Some(t) if t == "2>>" => {
                     let token = self.next().with_context(|| "invalid redirect token")?;
-                    let redirect_token = RedirectToken::StderrAppend(token_to_path(token)?);
+                    let redirect_token = RedirectToken::StderrAppend(token.into());
                     Token::Redirect(redirect_token)
                 }
-                Some(t) => Token::Value(ValueToken(t.into_inner())),
+                Some(t) => Token::Value(ValueToken(t)),
                 None => break,
             };
 
@@ -144,8 +105,6 @@ impl TokenParser {
 
 #[cfg(test)]
 mod test {
-    use raw::RawTokenParser;
-
     use super::*;
 
     macro_rules! T {
@@ -160,11 +119,13 @@ mod test {
         };
     }
 
+    fn str_to_vec_string(s: &str) -> Vec<String> {
+        s.split_whitespace().map(|s| s.to_string()).collect()
+    }
+
     #[test]
     fn test_parse_redirect_stdout_default() -> Result<()> {
-        let parser = RawTokenParser::new(r#"ls /tmp/baz > /tmp/foo/baz.md"#);
-        let tokens = parser.parse();
-        let parser = TokenParser::new(tokens);
+        let parser = TokenParser::new(str_to_vec_string(r#"ls /tmp/baz > /tmp/foo/baz.md"#));
         let tokens = parser.parse()?;
         assert_eq!(
             tokens,
@@ -179,9 +140,7 @@ mod test {
 
     #[test]
     fn test_parse_redirect_stdout() -> Result<()> {
-        let parser = RawTokenParser::new(r#"ls /tmp/baz > /tmp/foo/baz.md"#);
-        let tokens = parser.parse();
-        let parser = TokenParser::new(tokens);
+        let parser = TokenParser::new(str_to_vec_string(r#"ls /tmp/baz > /tmp/foo/baz.md"#));
         let tokens = parser.parse()?;
         assert_eq!(
             tokens,
@@ -196,9 +155,7 @@ mod test {
 
     #[test]
     fn test_parse_redirect_stderr() -> Result<()> {
-        let parser = RawTokenParser::new(r#"ls /tmp/baz 2> /tmp/foo/baz.md"#);
-        let tokens = parser.parse();
-        let parser = TokenParser::new(tokens);
+        let parser = TokenParser::new(str_to_vec_string(r#"ls /tmp/baz 2> /tmp/foo/baz.md"#));
         let tokens = parser.parse()?;
         assert_eq!(
             tokens,
@@ -213,11 +170,9 @@ mod test {
 
     #[test]
     fn test_parse_redirect_multiple_stdout_stderr() -> Result<()> {
-        let parser = RawTokenParser::new(
+        let parser = TokenParser::new(str_to_vec_string(
             r#"ls /tmp/baz > stdout1 > stdout2 1> stdout3 2> stderr1 2> stderr2"#,
-        );
-        let tokens = parser.parse();
-        let parser = TokenParser::new(tokens);
+        ));
         let tokens = parser.parse()?;
         assert_eq!(
             tokens,

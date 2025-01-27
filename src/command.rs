@@ -5,10 +5,7 @@ use anyhow::Result;
 use builtin::{BuiltinCmd, ExecBuiltinCmd};
 use exec_file::ExecFileCmd;
 
-use crate::{
-    execute::{Execute, ExecutedOutput},
-    token::{parse_tokens, ValueToken},
-};
+use crate::parser::ValueToken;
 
 // TODO: lifetime
 pub(crate) enum Cmd {
@@ -17,25 +14,32 @@ pub(crate) enum Cmd {
     Invalid(String),
 }
 
+pub(crate) trait Execute {
+    fn execute(self) -> Result<ExecutedOutput>;
+}
+
+#[derive(Default)]
+pub(crate) struct ExecutedOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
 impl Cmd {
     pub fn from_value_tokens(mut values: Vec<ValueToken>) -> Result<Cmd> {
         let command = values.remove(0);
 
-        let args: Vec<String> = values
-            .into_iter()
-            .filter_map(|v| v.try_into().ok())
-            .collect();
+        let args: Vec<String> = values.into_iter().map(|v| v.0).collect();
 
-        match command.0.as_slice() {
-            b"exit" => Ok(Cmd::Builtin(BuiltinCmd::Exit(
+        match command.0.as_str() {
+            "exit" => Ok(Cmd::Builtin(BuiltinCmd::Exit(
                 args.first().cloned().unwrap_or_default(),
             ))),
-            b"pwd" => Ok(Cmd::Builtin(BuiltinCmd::Pwd)),
-            b"echo" => Ok(Cmd::Builtin(BuiltinCmd::Echo(args.join(" ")))),
-            b"cd" => Ok(Cmd::Builtin(BuiltinCmd::Cd(args.join(" ")))),
-            b"type" => Ok(Cmd::Builtin(BuiltinCmd::Type(args.join(" ")))),
+            "pwd" => Ok(Cmd::Builtin(BuiltinCmd::Pwd)),
+            "echo" => Ok(Cmd::Builtin(BuiltinCmd::Echo(args.join(" ")))),
+            "cd" => Ok(Cmd::Builtin(BuiltinCmd::Cd(args.join(" ")))),
+            "type" => Ok(Cmd::Builtin(BuiltinCmd::Type(args.join(" ")))),
             _ => {
-                let command: String = command.try_into()?;
+                let command: String = command.0;
                 if let Ok(exec_file_cmd) = ExecFileCmd::new(command.clone(), args) {
                     Ok(Cmd::ExecFile(exec_file_cmd))
                 } else {
@@ -60,5 +64,21 @@ impl Execute for Cmd {
         };
 
         Ok(output)
+    }
+}
+
+impl ExecutedOutput {
+    pub fn new() -> ExecutedOutput {
+        ExecutedOutput::default()
+    }
+
+    pub fn with_stdout<S: AsRef<[u8]>>(mut self, s: S) -> ExecutedOutput {
+        self.stdout = s.as_ref().into();
+        self
+    }
+
+    pub fn with_stderr<S: AsRef<[u8]>>(mut self, s: S) -> ExecutedOutput {
+        self.stderr = s.as_ref().into();
+        self
     }
 }

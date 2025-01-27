@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Result;
 
-use crate::token::RedirectToken;
+use crate::parser::RedirectToken;
 
 #[derive(Default)]
 pub struct Redirector {

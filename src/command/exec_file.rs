@@ -1,11 +1,8 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
-use crate::{
-    error::CmdError,
-    execute::{Execute, ExecutedOutput},
-};
+use super::{Execute, ExecutedOutput};
 
 pub struct ExecFileCmd {
     pub command: String,
@@ -14,13 +11,13 @@ pub struct ExecFileCmd {
 }
 
 impl ExecFileCmd {
-    pub fn new(command: String, args: Vec<String>) -> Result<ExecFileCmd, CmdError> {
+    pub fn new(command: String, args: Vec<String>) -> Result<ExecFileCmd> {
         let path = std::env::var("PATH")?;
         let path = path
             .split(":")
             .map(|path| PathBuf::from(path).join(&command))
             .find(|path| path.is_file())
-            .ok_or_else(|| CmdError::MissingCmd("missing executable file command".into()))?;
+            .with_context(|| "missing executable file command")?;
 
         Ok(ExecFileCmd {
             command,

@@ -1,8 +1,8 @@
 use anyhow::Result;
 
-use crate::execute::{Execute, ExecutedOutput};
+use crate::parser::parse_tokens;
 
-use super::{parse_tokens, Cmd};
+use super::{Cmd, Execute, ExecutedOutput};
 
 pub(crate) enum BuiltinCmd {
     Exit(String),
@@ -28,7 +28,8 @@ impl BuiltinCmd {
             BuiltinCmd::Pwd => Ok(ExecBuiltinCmd::Pwd),
             BuiltinCmd::Cd(directory) => Ok(ExecBuiltinCmd::Cd(directory)),
             BuiltinCmd::Type(typ) => {
-                let (_, values) = parse_tokens(&typ)?;
+                let (_, values) =
+                    parse_tokens(typ.split_whitespace().map(|s| s.to_string()).collect())?;
                 let command = Cmd::from_value_tokens(values)?;
                 Ok(ExecBuiltinCmd::Type(Box::new(command)))
             }
