@@ -3,7 +3,7 @@ use std::io::{StdoutLock, Write};
 use anyhow::Result;
 
 use super::{
-    completer::{self, TabCompletionState},
+    completer::{self, CompletedSuffix, TabCompletionState},
     is_whitespace,
     key::Key,
     ParsedStatus, BACKSLASH, DOUBLE_QUOTE, NEWLINE, SINGLE_QUOTE, SPACE, TAB,
@@ -126,22 +126,28 @@ impl RawTokenParse for NoQuote<'_> {
                     Key::Char(ch) if is_whitespace(ch) => break,
                     Key::Char(ch) => self.token.push(ch),
                     Key::Tab => {
-                        if let Some(mut suffix) = completer::completed_suffix(
+                        let completed_suffix = completer::completed_suffix(
                             self.stdout,
                             &self.token,
                             self.tab_completion_state,
                             self.raw,
-                        )? {
-                            self.token += &suffix;
-                            suffix.push(SPACE);
+                        )?;
+
+                        if let Some(suffix) = completed_suffix.suffix() {
+                            self.token += suffix;
+                            self.tab_completion_state = TabCompletionState::NotPressed;
                             self.stdout.write_all(suffix.as_bytes())?;
                             self.stdout.flush()?;
-                            self.tab_completion_state = TabCompletionState::NotPressed;
-                            break;
                         } else {
                             // no completed candidate, record state so that subsequent press should
                             // show all matches candidate
                             self.tab_completion_state = TabCompletionState::Pressed
+                        }
+
+                        if matches!(completed_suffix, CompletedSuffix::Completed { suffix: _ }) {
+                            self.stdout.write_all(SPACE.to_string().as_bytes())?;
+                            self.stdout.flush()?;
+                            break;
                         }
                     }
                     Key::Newline => return Ok(ParsedStatus::Stop(self.token)),
@@ -168,27 +174,29 @@ impl RawTokenParse for SingleQuote<'_> {
                 Key::Char(SINGLE_QUOTE) => break,
                 Key::Char(ch) => self.token.push(ch),
                 Key::Tab => {
-                    if let Some(suffix) = completer::completed_suffix(
+                    let completed_suffix = completer::completed_suffix(
                         self.stdout,
                         &self.token,
                         self.tab_completion_state,
                         self.raw,
-                    )? {
-                        self.token += &suffix;
+                    )?;
+
+                    if let Some(suffix) = completed_suffix.suffix() {
+                        self.token += suffix;
+                        self.tab_completion_state = TabCompletionState::NotPressed;
                         self.stdout.write_all(suffix.as_bytes())?;
                         self.stdout.flush()?;
-                        self.tab_completion_state = TabCompletionState::NotPressed;
                     } else {
                         // no completed candidate, record state so that subsequent press should
                         // show all matches candidate
-                        self.tab_completion_state = TabCompletionState::Pressed;
+                        self.tab_completion_state = TabCompletionState::Pressed
                     }
                 }
                 Key::Newline => self.token.push(NEWLINE),
                 Key::Backspace => todo!("handle backspace"),
             };
-
             // reset tab completion state
+
             if !matches!(key, Key::Tab) {
                 self.tab_completion_state = TabCompletionState::NotPressed
             }
@@ -213,20 +221,22 @@ impl RawTokenParse for DoubleQuote<'_> {
                 },
                 Key::Char(ch) => self.token.push(ch),
                 Key::Tab => {
-                    if let Some(suffix) = completer::completed_suffix(
+                    let completed_suffix = completer::completed_suffix(
                         self.stdout,
                         &self.token,
                         self.tab_completion_state,
                         self.raw,
-                    )? {
-                        self.token += &suffix;
+                    )?;
+
+                    if let Some(suffix) = completed_suffix.suffix() {
+                        self.token += suffix;
+                        self.tab_completion_state = TabCompletionState::NotPressed;
                         self.stdout.write_all(suffix.as_bytes())?;
                         self.stdout.flush()?;
-                        self.tab_completion_state = TabCompletionState::NotPressed;
                     } else {
                         // no completed candidate, record state so that subsequent press should
                         // show all matches candidate
-                        self.tab_completion_state = TabCompletionState::Pressed;
+                        self.tab_completion_state = TabCompletionState::Pressed
                     }
                 }
                 Key::Newline => self.token.push(NEWLINE),

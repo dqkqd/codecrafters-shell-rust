@@ -12,41 +12,58 @@ pub(crate) enum TabCompletionState {
     Pressed,
 }
 
+#[derive(Debug)]
+pub(crate) enum CompletedSuffix {
+    None,
+    Completed { suffix: String },
+    Partial { suffix: String },
+}
+
 /// Return the suffix
 pub(crate) fn completed_suffix(
     stdout: &mut StdoutLock<'static>,
     pat: &str,
     state: TabCompletionState,
     raw: &str,
-) -> Result<Option<String>> {
+) -> Result<CompletedSuffix> {
     let result = match completed_candidates(pat) {
         CompletedCandidates::None => {
             beep(stdout)?;
-            stdout.flush()?;
-            None
+            CompletedSuffix::None
         }
-        CompletedCandidates::One { candidate } => candidate
-            .strip_prefix(pat)
-            .map(|s| s.to_string())
-            .filter(|s| !s.is_empty()),
-
+        CompletedCandidates::One { candidate } => CompletedSuffix::Completed {
+            suffix: suffix(&candidate, pat).unwrap(),
+        },
         CompletedCandidates::Multiple { prefix, candidates } => {
+            let suffix = suffix(&prefix, pat).filter(|s| !s.is_empty());
+            let suffix = match suffix {
+                Some(suffix) => CompletedSuffix::Partial { suffix },
+                None => CompletedSuffix::None,
+            };
+
             match state {
                 TabCompletionState::NotPressed => {
-                    beep(stdout)?;
+                    if matches!(suffix, CompletedSuffix::None) {
+                        // no match
+                        beep(stdout)?;
+                    }
                 }
                 TabCompletionState::Pressed => {
-                    stdout.write_all(b"\r\n")?;
-                    let output = candidates.join("  ");
-                    stdout.write_all(output.as_bytes())?;
-                    stdout.write_all(b"\r\n$ ")?;
+                    if matches!(suffix, CompletedSuffix::None) {
+                        // no match
+                        stdout.write_all(b"\r\n")?;
+                        let output = candidates.join("  ");
+                        stdout.write_all(output.as_bytes())?;
+                        stdout.write_all(b"\r\n$ ")?;
 
-                    stdout.write_all(raw.as_bytes())?;
-                    stdout.write_all(prefix.as_bytes())?;
+                        stdout.write_all(raw.as_bytes())?;
+                        stdout.write_all(pat.as_bytes())?;
+                        stdout.flush()?;
+                    }
                 }
             }
-            stdout.flush()?;
-            None
+
+            suffix
         }
     };
 
@@ -96,6 +113,17 @@ fn completed_candidates(pat: &str) -> CompletedCandidates {
     }
 }
 
+impl CompletedSuffix {
+    pub fn suffix(&self) -> Option<&str> {
+        match self {
+            CompletedSuffix::None => None,
+            CompletedSuffix::Completed { suffix } | CompletedSuffix::Partial { suffix } => {
+                Some(suffix)
+            }
+        }
+    }
+}
+
 fn builtins() -> Vec<&'static str> {
     vec!["exit", "pwd", "echo", "cd", "type"]
 }
@@ -124,6 +152,7 @@ fn paths_candidates(pat: &str) -> Result<Vec<String>> {
 
 fn beep<W: Write>(writer: &mut W) -> Result<()> {
     writer.write_all(b"\x07")?;
+    writer.flush()?;
     Ok(())
 }
 
@@ -138,4 +167,8 @@ fn longest_common_prefix(a: &str, b: &str) -> String {
             }
         }
     }
+}
+
+fn suffix(s: &str, prefix: &str) -> Option<String> {
+    s.strip_prefix(prefix).map(|s| s.to_string())
 }
