@@ -136,16 +136,21 @@ impl RawTokenParse for NoQuote<'_> {
                             suffix.push(SPACE);
                             self.stdout.write_all(suffix.as_bytes())?;
                             self.stdout.flush()?;
+                            self.tab_completion_state = TabCompletionState::NotPressed;
                             break;
+                        } else {
+                            // no completed candidate, record state so that subsequent press should
+                            // show all matches candidate
+                            self.tab_completion_state = TabCompletionState::Pressed
                         }
                     }
                     Key::Newline => return Ok(ParsedStatus::Stop(self.token)),
                     Key::Backspace => todo!("handle backspace"),
                 }
 
-                match key {
-                    Key::Tab => self.tab_completion_state = TabCompletionState::Pressed,
-                    _ => self.tab_completion_state = TabCompletionState::NotPressed,
+                // reset tab completion state
+                if !matches!(key, Key::Tab) {
+                    self.tab_completion_state = TabCompletionState::NotPressed
                 }
             }
         }
@@ -172,15 +177,20 @@ impl RawTokenParse for SingleQuote<'_> {
                         self.token += &suffix;
                         self.stdout.write_all(suffix.as_bytes())?;
                         self.stdout.flush()?;
+                        self.tab_completion_state = TabCompletionState::NotPressed;
+                    } else {
+                        // no completed candidate, record state so that subsequent press should
+                        // show all matches candidate
+                        self.tab_completion_state = TabCompletionState::Pressed;
                     }
                 }
                 Key::Newline => self.token.push(NEWLINE),
                 Key::Backspace => todo!("handle backspace"),
             };
 
-            match key {
-                Key::Tab => self.tab_completion_state = TabCompletionState::Pressed,
-                _ => self.tab_completion_state = TabCompletionState::NotPressed,
+            // reset tab completion state
+            if !matches!(key, Key::Tab) {
+                self.tab_completion_state = TabCompletionState::NotPressed
             }
         }
         Ok(ParsedStatus::Continue(self.token))
@@ -212,15 +222,20 @@ impl RawTokenParse for DoubleQuote<'_> {
                         self.token += &suffix;
                         self.stdout.write_all(suffix.as_bytes())?;
                         self.stdout.flush()?;
+                        self.tab_completion_state = TabCompletionState::NotPressed;
+                    } else {
+                        // no completed candidate, record state so that subsequent press should
+                        // show all matches candidate
+                        self.tab_completion_state = TabCompletionState::Pressed;
                     }
                 }
                 Key::Newline => self.token.push(NEWLINE),
                 Key::Backspace => todo!("handle backspace"),
             }
 
-            match key {
-                Key::Tab => self.tab_completion_state = TabCompletionState::Pressed,
-                _ => self.tab_completion_state = TabCompletionState::NotPressed,
+            // reset tab completion state
+            if !matches!(key, Key::Tab) {
+                self.tab_completion_state = TabCompletionState::NotPressed
             }
         }
         Ok(ParsedStatus::Continue(self.token))
