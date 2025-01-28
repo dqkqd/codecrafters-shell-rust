@@ -25,9 +25,11 @@ pub(crate) fn completed_suffix(
             stdout.flush()?;
             None
         }
-        CompletedCandidates::One { candidate } => {
-            candidate.strip_prefix(pat).map(|s| s.to_string())
-        }
+        CompletedCandidates::One { candidate } => candidate
+            .strip_prefix(pat)
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty()),
+
         CompletedCandidates::Multiple { prefix, candidates } => {
             match state {
                 TabCompletionState::NotPressed => {
