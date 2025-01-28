@@ -110,8 +110,8 @@ impl RawTokenParse for NoQuote<'_> {
                         if let Some(mut suffix) =
                             completer::completed_suffix(self.stdout, &self.token)?
                         {
-                            suffix.push(SPACE);
                             self.token += &suffix;
+                            suffix.push(SPACE);
                             self.stdout.write_all(suffix.as_bytes())?;
                             self.stdout.flush()?;
                             break;
