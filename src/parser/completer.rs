@@ -1,4 +1,8 @@
-use std::io::{StdoutLock, Write};
+use std::{
+    collections::BTreeSet,
+    io::{StdoutLock, Write},
+    path::PathBuf,
+};
 
 use anyhow::Result;
 
@@ -35,11 +39,18 @@ enum CompletedCandidates {
 }
 
 fn completed_candidates(pat: &str) -> CompletedCandidates {
-    let mut candidates: Vec<String> = builtins()
-        .iter()
-        .filter(|s| s.starts_with(pat))
-        .map(|s| s.to_string())
-        .collect();
+    let mut candidates: Vec<String> = {
+        let mut builtin_candidates: BTreeSet<String> = builtins()
+            .iter()
+            .filter(|s| s.starts_with(pat))
+            .map(|s| s.to_string())
+            .collect();
+
+        if let Ok(path_candidates) = paths_candidates(pat) {
+            builtin_candidates.extend(path_candidates);
+        }
+        builtin_candidates.into_iter().collect()
+    };
 
     match candidates.len() {
         0 => CompletedCandidates::None,
@@ -50,4 +61,26 @@ fn completed_candidates(pat: &str) -> CompletedCandidates {
 
 fn builtins() -> Vec<&'static str> {
     vec!["exit", "pwd", "echo", "cd", "type"]
+}
+
+fn paths_candidates(pat: &str) -> Result<Vec<String>> {
+    let path = std::env::var("PATH")?;
+    let patterns: Vec<String> = path.split(":").map(|p| format!("{}/{}*", p, pat)).collect();
+
+    let executables: Vec<String> = patterns
+        .into_iter()
+        .filter_map(|pattern| glob::glob(&pattern).ok())
+        .flat_map(|entries| {
+            let entries: Vec<PathBuf> =
+                entries.into_iter().filter_map(|entry| entry.ok()).collect();
+            entries
+        })
+        .filter_map(|p| {
+            p.file_name()
+                .and_then(|f| f.to_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
+    Ok(executables)
 }
