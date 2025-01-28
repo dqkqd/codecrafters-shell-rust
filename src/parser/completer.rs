@@ -25,8 +25,10 @@ pub(crate) fn completed_suffix(
             stdout.flush()?;
             None
         }
-        CompletedCandidates::One(candidate) => candidate.strip_prefix(pat).map(|s| s.to_string()),
-        CompletedCandidates::Multiple(candidates) => {
+        CompletedCandidates::One { candidate } => {
+            candidate.strip_prefix(pat).map(|s| s.to_string())
+        }
+        CompletedCandidates::Multiple { prefix, candidates } => {
             match state {
                 TabCompletionState::NotPressed => {
                     beep(stdout)?;
@@ -38,7 +40,7 @@ pub(crate) fn completed_suffix(
                     stdout.write_all(b"\r\n$ ")?;
 
                     stdout.write_all(raw.as_bytes())?;
-                    stdout.write_all(pat.as_bytes())?;
+                    stdout.write_all(prefix.as_bytes())?;
                 }
             }
             stdout.flush()?;
@@ -51,8 +53,13 @@ pub(crate) fn completed_suffix(
 
 enum CompletedCandidates {
     None,
-    One(String),
-    Multiple(Vec<String>),
+    One {
+        candidate: String,
+    },
+    Multiple {
+        prefix: String,
+        candidates: Vec<String>,
+    },
 }
 
 fn completed_candidates(pat: &str) -> CompletedCandidates {
@@ -71,8 +78,19 @@ fn completed_candidates(pat: &str) -> CompletedCandidates {
 
     match candidates.len() {
         0 => CompletedCandidates::None,
-        1 => CompletedCandidates::One(candidates.remove(0)),
-        _ => CompletedCandidates::Multiple(candidates),
+        1 => CompletedCandidates::One {
+            candidate: candidates.remove(0),
+        },
+        _ => {
+            let longest_common_prefix = candidates.iter().fold(candidates[0].clone(), |acc, e| {
+                longest_common_prefix(&acc, e)
+            });
+
+            CompletedCandidates::Multiple {
+                prefix: longest_common_prefix,
+                candidates,
+            }
+        }
     }
 }
 
@@ -105,4 +123,17 @@ fn paths_candidates(pat: &str) -> Result<Vec<String>> {
 fn beep<W: Write>(writer: &mut W) -> Result<()> {
     writer.write_all(b"\x07")?;
     Ok(())
+}
+
+fn longest_common_prefix(a: &str, b: &str) -> String {
+    match a.chars().zip(b.chars()).position(|(x, y)| x != y) {
+        Some(pos) => a[..pos].to_string(),
+        None => {
+            if a.len() > b.len() {
+                b.to_string()
+            } else {
+                a.to_string()
+            }
+        }
+    }
 }
