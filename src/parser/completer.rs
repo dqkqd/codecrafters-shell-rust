@@ -6,23 +6,40 @@ use std::{
 
 use anyhow::Result;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum TabCompletionState {
+    NotPressed,
+    Pressed,
+}
+
 /// Return the suffix
 pub(crate) fn completed_suffix(
     stdout: &mut StdoutLock<'static>,
     pat: &str,
+    state: TabCompletionState,
+    raw: &str,
 ) -> Result<Option<String>> {
     let result = match completed_candidates(pat) {
         CompletedCandidates::None => {
-            stdout.write_all(b"\x07")?;
+            beep(stdout)?;
             stdout.flush()?;
             None
         }
         CompletedCandidates::One(candidate) => candidate.strip_prefix(pat).map(|s| s.to_string()),
         CompletedCandidates::Multiple(candidates) => {
-            stdout.write_all(b"\r\n")?;
-            for s in candidates {
-                stdout.write_all(s.as_bytes())?;
-                stdout.write_all(b"\r\n")?;
+            match state {
+                TabCompletionState::NotPressed => {
+                    beep(stdout)?;
+                }
+                TabCompletionState::Pressed => {
+                    stdout.write_all(b"\r\n")?;
+                    let output = candidates.join("  ");
+                    stdout.write_all(output.as_bytes())?;
+                    stdout.write_all(b"\r\n$ ")?;
+
+                    stdout.write_all(raw.as_bytes())?;
+                    stdout.write_all(pat.as_bytes())?;
+                }
             }
             stdout.flush()?;
             None
@@ -83,4 +100,9 @@ fn paths_candidates(pat: &str) -> Result<Vec<String>> {
         .collect();
 
     Ok(executables)
+}
+
+fn beep<W: Write>(writer: &mut W) -> Result<()> {
+    writer.write_all(b"\x07")?;
+    Ok(())
 }

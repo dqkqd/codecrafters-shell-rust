@@ -3,8 +3,10 @@ use std::io::{StdoutLock, Write};
 use anyhow::Result;
 
 use super::{
-    completer, is_whitespace, key::Key, ParsedStatus, BACKSLASH, DOUBLE_QUOTE, NEWLINE,
-    SINGLE_QUOTE, SPACE, TAB,
+    completer::{self, TabCompletionState},
+    is_whitespace,
+    key::Key,
+    ParsedStatus, BACKSLASH, DOUBLE_QUOTE, NEWLINE, SINGLE_QUOTE, SPACE, TAB,
 };
 
 pub(super) trait RawTokenParse {
@@ -22,40 +24,49 @@ impl<'a> RawQuoteParser<'a> {
         stdout: &'a mut StdoutLock<'static>,
         ch: Option<char>,
         escape: bool,
+        raw: &'a str,
     ) -> RawQuoteParser<'a> {
         RawQuoteParser::None(NoQuote {
+            raw,
             stdout,
             token: match ch {
                 Some(ch) => String::from(ch),
                 None => String::new(),
             },
             escape,
+            tab_completion_state: TabCompletionState::NotPressed,
         })
     }
 
     pub fn single_quote(
         stdout: &'a mut StdoutLock<'static>,
         ch: Option<char>,
+        raw: &'a str,
     ) -> RawQuoteParser<'a> {
         RawQuoteParser::Single(SingleQuote {
+            raw,
             stdout,
             token: match ch {
                 Some(ch) => String::from(ch),
                 None => String::new(),
             },
+            tab_completion_state: TabCompletionState::NotPressed,
         })
     }
 
     pub fn double_quote(
         stdout: &'a mut StdoutLock<'static>,
         ch: Option<char>,
+        raw: &'a str,
     ) -> RawQuoteParser<'a> {
         RawQuoteParser::Double(DoubleQuote {
+            raw,
             stdout,
             token: match ch {
                 Some(ch) => String::from(ch),
                 None => String::new(),
             },
+            tab_completion_state: TabCompletionState::NotPressed,
         })
     }
 }
@@ -71,19 +82,25 @@ impl RawTokenParse for RawQuoteParser<'_> {
 }
 
 pub(super) struct NoQuote<'a> {
+    raw: &'a str,
     stdout: &'a mut StdoutLock<'static>,
     token: String,
     escape: bool,
+    tab_completion_state: TabCompletionState,
 }
 
 pub(super) struct SingleQuote<'a> {
+    raw: &'a str,
     stdout: &'a mut StdoutLock<'static>,
     token: String,
+    tab_completion_state: TabCompletionState,
 }
 
 pub(super) struct DoubleQuote<'a> {
+    raw: &'a str,
     stdout: &'a mut StdoutLock<'static>,
     token: String,
+    tab_completion_state: TabCompletionState,
 }
 
 impl RawTokenParse for NoQuote<'_> {
@@ -99,7 +116,9 @@ impl RawTokenParse for NoQuote<'_> {
                 };
                 self.escape = false;
             } else {
-                match Key::read(self.stdout)? {
+                let key = Key::read(self.stdout)?;
+
+                match key {
                     Key::Char(BACKSLASH) => {
                         // Handle escape in the next read.
                         self.escape = true;
@@ -107,9 +126,12 @@ impl RawTokenParse for NoQuote<'_> {
                     Key::Char(ch) if is_whitespace(ch) => break,
                     Key::Char(ch) => self.token.push(ch),
                     Key::Tab => {
-                        if let Some(mut suffix) =
-                            completer::completed_suffix(self.stdout, &self.token)?
-                        {
+                        if let Some(mut suffix) = completer::completed_suffix(
+                            self.stdout,
+                            &self.token,
+                            self.tab_completion_state,
+                            self.raw,
+                        )? {
                             self.token += &suffix;
                             suffix.push(SPACE);
                             self.stdout.write_all(suffix.as_bytes())?;
@@ -119,6 +141,11 @@ impl RawTokenParse for NoQuote<'_> {
                     }
                     Key::Newline => return Ok(ParsedStatus::Stop(self.token)),
                     Key::Backspace => todo!("handle backspace"),
+                }
+
+                match key {
+                    Key::Tab => self.tab_completion_state = TabCompletionState::Pressed,
+                    _ => self.tab_completion_state = TabCompletionState::NotPressed,
                 }
             }
         }
@@ -130,11 +157,18 @@ impl RawTokenParse for NoQuote<'_> {
 impl RawTokenParse for SingleQuote<'_> {
     fn parse(mut self) -> Result<ParsedStatus> {
         loop {
-            match Key::read(self.stdout)? {
+            let key = Key::read(self.stdout)?;
+
+            match key {
                 Key::Char(SINGLE_QUOTE) => break,
                 Key::Char(ch) => self.token.push(ch),
                 Key::Tab => {
-                    if let Some(suffix) = completer::completed_suffix(self.stdout, &self.token)? {
+                    if let Some(suffix) = completer::completed_suffix(
+                        self.stdout,
+                        &self.token,
+                        self.tab_completion_state,
+                        self.raw,
+                    )? {
                         self.token += &suffix;
                         self.stdout.write_all(suffix.as_bytes())?;
                         self.stdout.flush()?;
@@ -142,6 +176,11 @@ impl RawTokenParse for SingleQuote<'_> {
                 }
                 Key::Newline => self.token.push(NEWLINE),
                 Key::Backspace => todo!("handle backspace"),
+            };
+
+            match key {
+                Key::Tab => self.tab_completion_state = TabCompletionState::Pressed,
+                _ => self.tab_completion_state = TabCompletionState::NotPressed,
             }
         }
         Ok(ParsedStatus::Continue(self.token))
@@ -151,7 +190,9 @@ impl RawTokenParse for SingleQuote<'_> {
 impl RawTokenParse for DoubleQuote<'_> {
     fn parse(mut self) -> Result<ParsedStatus> {
         loop {
-            match Key::read(self.stdout)? {
+            let key = Key::read(self.stdout)?;
+
+            match key {
                 Key::Char(DOUBLE_QUOTE) => break,
                 Key::Char(BACKSLASH) => match Key::read(self.stdout)? {
                     Key::Char(ch) if "$`\"\\\n".contains(ch) => self.token.push(ch),
@@ -162,7 +203,12 @@ impl RawTokenParse for DoubleQuote<'_> {
                 },
                 Key::Char(ch) => self.token.push(ch),
                 Key::Tab => {
-                    if let Some(suffix) = completer::completed_suffix(self.stdout, &self.token)? {
+                    if let Some(suffix) = completer::completed_suffix(
+                        self.stdout,
+                        &self.token,
+                        self.tab_completion_state,
+                        self.raw,
+                    )? {
                         self.token += &suffix;
                         self.stdout.write_all(suffix.as_bytes())?;
                         self.stdout.flush()?;
@@ -170,6 +216,11 @@ impl RawTokenParse for DoubleQuote<'_> {
                 }
                 Key::Newline => self.token.push(NEWLINE),
                 Key::Backspace => todo!("handle backspace"),
+            }
+
+            match key {
+                Key::Tab => self.tab_completion_state = TabCompletionState::Pressed,
+                _ => self.tab_completion_state = TabCompletionState::NotPressed,
             }
         }
         Ok(ParsedStatus::Continue(self.token))
