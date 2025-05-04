@@ -21,6 +21,7 @@ impl Command {
         let command = alt((
             exit.map(|code| InternalCommand::Builtin(Builtin::Exit(code))),
             echo.map(|s| InternalCommand::Builtin(Builtin::Echo(s))),
+            ty.map(|s| InternalCommand::Builtin(Builtin::Type(s))),
             invalid_command.map(InternalCommand::Invalid),
         ))
         .parse_next(input)
@@ -39,4 +40,8 @@ fn invalid_command(input: Input) -> ModalResult<String> {
 
 fn echo(input: Input) -> ModalResult<String> {
     preceded(("echo", space1), rest.map(String::from)).parse_next(input)
+}
+
+fn ty(input: Input) -> ModalResult<String> {
+    preceded(("type", space1), rest.map(String::from)).parse_next(input)
 }

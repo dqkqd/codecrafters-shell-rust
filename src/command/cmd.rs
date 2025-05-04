@@ -8,6 +8,7 @@ pub(super) enum InternalCommand {
 pub(super) enum Builtin {
     Exit(i32),
     Echo(String),
+    Type(String),
 }
 
 pub(crate) struct Command {
@@ -32,6 +33,16 @@ impl Command {
             InternalCommand::Builtin(Builtin::Echo(ref s)) => {
                 self.stdout.write_all_and_flush(&format!("{s}\n"))?;
             }
+            InternalCommand::Builtin(Builtin::Type(ref command)) => match command.trim() {
+                command @ ("echo" | "exit" | "type") => {
+                    self.stdout
+                        .write_all_and_flush(&format!("{command} is a shell builtin\n"))?;
+                }
+                command => {
+                    self.stdout
+                        .write_all_and_flush(&format!("{command}: not found\n"))?;
+                }
+            },
             InternalCommand::Invalid(ref command) => {
                 self.stdout
                     .write_all_and_flush(&format!("{command}: command not found\n"))?;

@@ -105,3 +105,25 @@ $ banana mango
 $ "#,
         );
 }
+
+#[test]
+fn ty() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"type echo
+type exit
+type type
+type invalid_command
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ echo is a shell builtin
+$ exit is a shell builtin
+$ type is a shell builtin
+$ invalid_command: not found
+$ "#,
+        );
+}
