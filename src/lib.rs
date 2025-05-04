@@ -29,21 +29,27 @@ impl<W: Write> Shell<W> {
     }
 
     pub fn run<R: BufRead>(&mut self, mut input: R) -> Result<()> {
-        // first write dollar sign
-        self.prompt()?;
+        loop {
+            // first write dollar sign
+            self.prompt()?;
 
-        // read user input
-        let mut raw_input = String::new();
-        let out = input.read_line(&mut raw_input)?;
-        if out > 1 {
-            self.add_input(&raw_input)?;
-            if let Some('\n') = raw_input.chars().last() {
-                raw_input.pop();
+            // read user input
+            let mut raw_input = String::new();
+            let n = input.read_line(&mut raw_input)?;
+            match n {
+                0 => break Ok(()),
+                1 => {
+                    self.add_input(&raw_input)?;
+                }
+                2.. => {
+                    self.add_input(&raw_input)?;
+                    if let Some('\n') = raw_input.chars().last() {
+                        raw_input.pop();
+                    }
+                    self.write_and_flush(&format!("{raw_input}: command not found\n"))?;
+                }
             }
-            self.write_and_flush(&format!("{raw_input}: command not found\n"))?;
         }
-
-        Ok(())
     }
 
     fn prompt(&mut self) -> Result<()> {
@@ -73,8 +79,6 @@ impl<W: Write> Shell<W> {
 #[cfg(test)]
 fn run_test_with_input(input: &str) -> anyhow::Result<String> {
     use std::io::BufReader;
-
-    let input = input.to_string() + "\n";
     let input = BufReader::new(input.as_bytes());
     let mut shell =
         Shell::new(Vec::new()).with_option(OutputOption::default().with_print_input(true));
@@ -97,12 +101,51 @@ mod test {
 
     #[test]
     fn handle_invalid_commands() -> anyhow::Result<()> {
-        let output = run_test_with_input("some_command")?;
+        let output = run_test_with_input("some_command\n")?;
         assert_eq!(
             output,
-            r#"$ some_command
+            r"$ some_command
 some_command: command not found
-"#
+$ "
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repl() -> anyhow::Result<()> {
+        let output = run_test_with_input(
+            r#"
+command1
+command2
+"#,
+        )?;
+        assert_eq!(
+            output,
+            r"$ 
+$ command1
+command1: command not found
+$ command2
+command2: command not found
+$ "
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repl_empty() -> anyhow::Result<()> {
+        let output = run_test_with_input(
+            r#"
+command1
+
+"#,
+        )?;
+        assert_eq!(
+            output,
+            r#"$ 
+$ command1
+command1: command not found
+$ 
+$ "#
         );
         Ok(())
     }
