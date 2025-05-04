@@ -36,16 +36,14 @@ impl<W: Write> Shell<W> {
             // read user input
             let mut raw_input = String::new();
             let n = input.read_line(&mut raw_input)?;
+            let raw_input = raw_input.trim();
             match n {
                 0 => break Ok(()),
                 1 => {
-                    self.add_input(&raw_input)?;
+                    self.add_input(raw_input)?;
                 }
                 2.. => {
-                    self.add_input(&raw_input)?;
-                    if let Some('\n') = raw_input.chars().last() {
-                        raw_input.pop();
-                    }
+                    self.add_input(raw_input)?;
                     self.write_and_flush(&format!("{raw_input}: command not found\n"))?;
                 }
             }
@@ -59,6 +57,7 @@ impl<W: Write> Shell<W> {
     fn add_input(&mut self, data: &str) -> Result<()> {
         if self.opts.print_input {
             self.write_and_flush(data)?;
+            self.write_and_flush("\n")?;
         }
         Ok(())
     }
