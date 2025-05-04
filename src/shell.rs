@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::io::{self, Write};
 
-use crate::command::cmd::CommandWithPipe;
+use crate::command::cmd::Command;
 
 #[derive(Debug)]
 pub struct Shell {
@@ -35,7 +35,7 @@ impl Shell {
                     if raw_input.is_empty() {
                         continue;
                     }
-                    let mut command = CommandWithPipe::parse(&mut raw_input);
+                    let mut command = Command::parse(&mut raw_input);
                     command.execute()?;
                 }
             }

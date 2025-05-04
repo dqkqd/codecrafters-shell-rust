@@ -73,3 +73,35 @@ fn exit_1() {
         .code(101)
         .stdout("$ ");
 }
+
+#[test]
+fn echo() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin("echo 123")
+        .assert()
+        .success()
+        .stdout(
+            r#"$ 123
+$ "#,
+        );
+}
+
+#[test]
+fn echo_space() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"echo raspberry orange apple
+echo grape strawberry
+echo banana mango"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ raspberry orange apple
+$ grape strawberry
+$ banana mango
+$ "#,
+        );
+}

@@ -1,15 +1,25 @@
 use super::io::{PErr, POut};
 
-pub(crate) struct CommandWithPipe {
+pub(super) enum InternalCommand {
+    Builtin(Builtin),
+    Invalid(String),
+}
+
+pub(super) enum Builtin {
+    Exit(i32),
+    Echo(String),
+}
+
+pub(crate) struct Command {
     stdout: POut,
     #[allow(unused)]
     stderr: PErr,
-    command: Command,
+    command: InternalCommand,
 }
 
-impl CommandWithPipe {
-    pub fn new(stdout: POut, stderr: PErr, command: Command) -> CommandWithPipe {
-        CommandWithPipe {
+impl Command {
+    pub(super) fn new(stdout: POut, stderr: PErr, command: InternalCommand) -> Command {
+        Command {
             stdout,
             stderr,
             command,
@@ -18,21 +28,15 @@ impl CommandWithPipe {
 
     pub fn execute(&mut self) -> anyhow::Result<()> {
         match self.command {
-            Command::Builtin(BuiltinCommand::ExitCommand(code)) => std::process::exit(code),
-            Command::InvalidCommand(ref command) => {
+            InternalCommand::Builtin(Builtin::Exit(code)) => std::process::exit(code),
+            InternalCommand::Builtin(Builtin::Echo(ref s)) => {
+                self.stdout.write_all_and_flush(&format!("{s}\n"))?;
+            }
+            InternalCommand::Invalid(ref command) => {
                 self.stdout
                     .write_all_and_flush(&format!("{command}: command not found\n"))?;
             }
         }
         Ok(())
     }
-}
-
-pub(crate) enum Command {
-    Builtin(BuiltinCommand),
-    InvalidCommand(String),
-}
-
-pub(crate) enum BuiltinCommand {
-    ExitCommand(i32),
 }
