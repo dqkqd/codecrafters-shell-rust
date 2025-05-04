@@ -1,10 +1,8 @@
-use std::io::{self, BufReader, BufWriter};
+use std::io::{self};
 
 use codecrafters_shell::Shell;
 
 fn main() -> anyhow::Result<()> {
-    let reader = BufReader::new(io::stdin().lock());
-    let writer = BufWriter::new(io::stdout().lock());
-    Shell::new(writer).run(reader)?;
+    Shell::new().run(io::stdin())?;
     Ok(())
 }
