@@ -1,4 +1,4 @@
-use std::{env::current_dir, fs::File};
+use std::fs::File;
 
 use assert_cmd::Command;
 use tempfile::tempdir;
@@ -162,4 +162,24 @@ fn ty_path_command() {
 $ "#,
             executable_path.as_path().display()
         ));
+}
+
+#[test]
+fn ty_path_exec() {
+    let tmp_dir = tempdir().unwrap();
+    File::create(tmp_dir.path().join("file1")).unwrap();
+    File::create(tmp_dir.path().join("file2")).unwrap();
+    File::create(tmp_dir.path().join("file3")).unwrap();
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(format!("ls {}", tmp_dir.path().display()))
+        .assert()
+        .success()
+        .stdout(
+            r#"$ file1
+file2
+file3
+$ "#,
+        );
 }

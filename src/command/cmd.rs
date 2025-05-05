@@ -5,6 +5,7 @@ use super::{
     parse_cmd::{command_in_path, parse_i32},
     Execute,
 };
+use anyhow::Context;
 use strum_macros::EnumString;
 
 pub(super) enum InternalCommand {
@@ -63,9 +64,13 @@ impl Execute for InvalidCommand {
 
 impl Execute for PathCommand {
     fn execute(&mut self, _: &mut PIn, stdout: &mut POut, stderr: &mut PErr) -> anyhow::Result<()> {
-        let output = std::process::Command::new(self.path.as_path())
-            .args(self.args.0.split_whitespace().collect::<Vec<_>>())
-            .output()?;
+        let output = std::process::Command::new(
+            self.path
+                .file_name()
+                .with_context(|| format!("invalid filename for path `{}`", self.path.display()))?,
+        )
+        .args(self.args.0.split_whitespace().collect::<Vec<_>>())
+        .output()?;
         stdout.write_all_and_flush(&output.stdout)?;
         stderr.write_all_and_flush(&output.stderr)?;
         Ok(())
