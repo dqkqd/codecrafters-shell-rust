@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::io::{self, Write};
 
-use crate::command::cmd::Command;
+use crate::command::Command;
 
 #[derive(Debug)]
 pub struct Shell {

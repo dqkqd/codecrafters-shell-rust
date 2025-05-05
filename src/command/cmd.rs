@@ -1,53 +1,94 @@
-use super::io::{PErr, POut};
+use std::str::FromStr;
+
+use super::{
+    io::{PErr, PIn, POut},
+    parse_cmd::parse_i32,
+    Execute,
+};
+use strum_macros::EnumString;
 
 pub(super) enum InternalCommand {
-    Builtin(Builtin),
-    Invalid(String),
+    Builtin(BuiltinCommand),
+    Invalid(InvalidCommand),
 }
 
-pub(super) enum Builtin {
-    Exit(i32),
-    Echo(String),
-    Type(String),
+#[derive(Debug, Default, PartialEq)]
+pub(super) struct Args(pub String);
+
+#[derive(Debug, Default, PartialEq)]
+pub(super) struct InvalidCommand(pub String);
+
+#[derive(Debug, PartialEq, EnumString)]
+pub(super) enum BuiltinCommand {
+    #[strum(serialize = "exit")]
+    Exit(Args),
+    #[strum(serialize = "echo")]
+    Echo(Args),
+    #[strum(serialize = "type")]
+    Type(Args),
 }
 
-pub(crate) struct Command {
-    stdout: POut,
-    #[allow(unused)]
-    stderr: PErr,
-    command: InternalCommand,
-}
-
-impl Command {
-    pub(super) fn new(stdout: POut, stderr: PErr, command: InternalCommand) -> Command {
-        Command {
-            stdout,
-            stderr,
-            command,
+impl Execute for InternalCommand {
+    fn execute(
+        &mut self,
+        stdin: &mut PIn,
+        stdout: &mut POut,
+        stderr: &mut PErr,
+    ) -> anyhow::Result<()> {
+        match self {
+            InternalCommand::Builtin(builtin_command) => {
+                builtin_command.execute(stdin, stdout, stderr)
+            }
+            InternalCommand::Invalid(invalid_command) => {
+                invalid_command.execute(stdin, stdout, stderr)
+            }
         }
     }
+}
 
-    pub fn execute(&mut self) -> anyhow::Result<()> {
-        match self.command {
-            InternalCommand::Builtin(Builtin::Exit(code)) => std::process::exit(code),
-            InternalCommand::Builtin(Builtin::Echo(ref s)) => {
-                self.stdout.write_all_and_flush(&format!("{s}\n"))?;
-            }
-            InternalCommand::Builtin(Builtin::Type(ref command)) => match command.trim() {
-                command @ ("echo" | "exit" | "type") => {
-                    self.stdout
-                        .write_all_and_flush(&format!("{command} is a shell builtin\n"))?;
-                }
-                command => {
-                    self.stdout
-                        .write_all_and_flush(&format!("{command}: not found\n"))?;
-                }
-            },
-            InternalCommand::Invalid(ref command) => {
-                self.stdout
-                    .write_all_and_flush(&format!("{command}: command not found\n"))?;
-            }
-        }
+impl Execute for InvalidCommand {
+    fn execute(&mut self, _: &mut PIn, stdout: &mut POut, _: &mut PErr) -> anyhow::Result<()> {
+        stdout.write_all_and_flush(&format!("{}: command not found\n", self.0))?;
         Ok(())
     }
+}
+
+impl Execute for BuiltinCommand {
+    fn execute(&mut self, _: &mut PIn, stdout: &mut POut, stderr: &mut PErr) -> anyhow::Result<()> {
+        match self {
+            BuiltinCommand::Exit(args) => exit_command(args, stderr),
+            BuiltinCommand::Echo(args) => echo_command(args, stdout),
+            BuiltinCommand::Type(args) => type_command(args, stdout),
+        }
+    }
+}
+
+fn exit_command(args: &mut Args, stderr: &mut PErr) -> anyhow::Result<()> {
+    if let Ok(code) = parse_i32(&mut args.0.as_ref()) {
+        std::process::exit(code)
+    };
+    stderr.write_all_and_flush(&format!("invalid args: {}", args.0))?;
+    Ok(())
+}
+
+fn echo_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
+    let mut args = args.0.split_whitespace().peekable();
+    while let Some(arg) = args.next() {
+        stdout.write_all_and_flush(arg)?;
+        if args.peek().is_some() {
+            stdout.write_all_and_flush(" ")?;
+        }
+    }
+    stdout.write_all_and_flush("\n")?;
+    Ok(())
+}
+
+fn type_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
+    for arg in args.0.split_whitespace() {
+        match BuiltinCommand::from_str(arg) {
+            Ok(_) => stdout.write_all_and_flush(&format!("{arg} is a shell builtin\n"))?,
+            Err(_) => stdout.write_all_and_flush(&format!("{arg}: not found\n"))?,
+        }
+    }
+    Ok(())
 }

@@ -88,20 +88,18 @@ $ "#,
 }
 
 #[test]
-fn echo_space() {
+fn echo_multi() {
     Command::cargo_bin("codecrafters-shell")
         .unwrap()
         .write_stdin(
             r#"echo raspberry orange apple
-echo grape strawberry
-echo banana mango"#,
+echo grape      strawberry"#,
         )
         .assert()
         .success()
         .stdout(
             r#"$ raspberry orange apple
 $ grape strawberry
-$ banana mango
 $ "#,
         );
 }
@@ -124,6 +122,22 @@ type invalid_command
 $ exit is a shell builtin
 $ type is a shell builtin
 $ invalid_command: not found
+$ "#,
+        );
+}
+
+#[test]
+fn ty_multi() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin("type echo exit type invalid_command")
+        .assert()
+        .success()
+        .stdout(
+            r#"$ echo is a shell builtin
+exit is a shell builtin
+type is a shell builtin
+invalid_command: not found
 $ "#,
         );
 }
