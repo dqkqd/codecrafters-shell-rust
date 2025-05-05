@@ -8,6 +8,7 @@ use super::{
 use anyhow::Context;
 use strum_macros::EnumString;
 
+#[derive(Debug)]
 pub(super) enum InternalCommand {
     Builtin(BuiltinCommand),
     Invalid(InvalidCommand),
@@ -35,7 +36,9 @@ pub(super) enum BuiltinCommand {
     #[strum(serialize = "type")]
     Type(Args),
     #[strum(serialize = "pwd")]
-    Pwd(Args),
+    Pwd,
+    #[strum(serialize = "cd")]
+    Cd(Args),
 }
 
 impl Execute for InternalCommand {
@@ -85,7 +88,8 @@ impl Execute for BuiltinCommand {
             BuiltinCommand::Exit(args) => exit_command(args, stderr),
             BuiltinCommand::Echo(args) => echo_command(args, stdout),
             BuiltinCommand::Type(args) => type_command(args, stdout),
-            BuiltinCommand::Pwd(args) => pwd_command(stdout),
+            BuiltinCommand::Pwd => pwd_command(stdout),
+            BuiltinCommand::Cd(args) => cd_command(args, stderr),
         }
     }
 }
@@ -130,5 +134,19 @@ fn type_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
 fn pwd_command(stdout: &mut POut) -> anyhow::Result<()> {
     let current_dir = env::current_dir()?;
     stdout.write_all_and_flush(format!("{}\n", current_dir.as_path().display()).as_bytes())?;
+    Ok(())
+}
+
+fn cd_command(args: &mut Args, stderr: &mut PErr) -> anyhow::Result<()> {
+    let path = args.0.split_whitespace().next();
+    if path.is_none_or(|path| std::env::set_current_dir(path).is_err()) {
+        stderr.write_all_and_flush(
+            format!(
+                "cd: {}: No such file or directory\n",
+                path.unwrap_or_default()
+            )
+            .as_bytes(),
+        )?;
+    }
     Ok(())
 }

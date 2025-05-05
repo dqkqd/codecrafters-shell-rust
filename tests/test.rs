@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 
 use assert_cmd::Command;
 use tempfile::tempdir;
@@ -200,5 +200,64 @@ fn pwd() {
             r#"$ {}
 $ "#,
             tmp_dir.path().display()
+        ));
+}
+
+#[test]
+fn cd() {
+    let tmp_dir = tempdir().unwrap();
+    let sub_dir = tmp_dir.path().join("level1").join("level2");
+    fs::create_dir_all(&sub_dir).unwrap();
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        // remove path to avoid using cd from path
+        .env("PATH", "")
+        .current_dir(tmp_dir.path()) // inside tmp path
+        .write_stdin(format!(
+            r#"pwd
+cd {}
+pwd"#,
+            sub_dir.display()
+        ))
+        .assert()
+        .success()
+        .stdout(format!(
+            r#"$ {}
+$ $ {}
+$ "#,
+            tmp_dir.path().display(),
+            sub_dir.display()
+        ));
+}
+
+#[test]
+fn cd_invalid_folder() {
+    let tmp_dir = tempdir().unwrap();
+    let sub_dir = tmp_dir.path().join("level1").join("level2");
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        // remove path to avoid using cd from path
+        .env("PATH", "")
+        .current_dir(tmp_dir.path()) // inside tmp path
+        .write_stdin(format!(
+            r#"pwd
+cd {}
+pwd"#,
+            sub_dir.display()
+        ))
+        .assert()
+        .success()
+        .stdout(format!(
+            r#"$ {}
+$ $ {}
+$ "#,
+            tmp_dir.path().display(),
+            tmp_dir.path().display(),
+        ))
+        .stderr(format!(
+            "cd: {}: No such file or directory\n",
+            sub_dir.display()
         ));
 }
