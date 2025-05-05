@@ -3,31 +3,17 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::Context;
-use winnow::ascii::{digit1, space0};
-use winnow::stream::AsChar;
-use winnow::token::{rest, take_till};
-use winnow::ModalResult;
-use winnow::Parser;
+use winnow::{
+    ascii::{digit1, space0},
+    stream::AsChar,
+    token::{rest, take_till},
+    ModalResult, Parser,
+};
 
-use crate::command::cmd::BuiltinCommand;
-
-use super::cmd::{Args, InternalCommand, InvalidCommand, PathCommand};
 use super::io::{PErr, PIn, POut};
-use super::Command;
+use super::{Args, BuiltinCommand, Command, InternalCommand, InvalidCommand, PathCommand};
 
 pub(super) type ParseInput<'a, 'b> = &'a mut &'b str;
-
-impl BuiltinCommand {
-    fn with_args(self, args: Args) -> BuiltinCommand {
-        match self {
-            BuiltinCommand::Exit(_) => BuiltinCommand::Exit(args),
-            BuiltinCommand::Echo(_) => BuiltinCommand::Echo(args),
-            BuiltinCommand::Type(_) => BuiltinCommand::Type(args),
-            BuiltinCommand::Pwd => BuiltinCommand::Pwd,
-            BuiltinCommand::Cd(_) => BuiltinCommand::Cd(args),
-        }
-    }
-}
 
 pub(super) fn parse_command(input: ParseInput) -> Command {
     let (cmd, args) =

@@ -1,19 +1,13 @@
-use cmd::InternalCommand;
+use std::path::PathBuf;
+
+use execute::Execute;
 use io::{PErr, PIn, POut};
-use parse_cmd::{parse_command, ParseInput};
+use parse::{parse_command, ParseInput};
+use strum::EnumString;
 
-mod cmd;
+mod execute;
 mod io;
-mod parse_cmd;
-
-trait Execute {
-    fn execute(
-        &mut self,
-        stdin: &mut PIn,
-        stdout: &mut POut,
-        stderr: &mut PErr,
-    ) -> anyhow::Result<()>;
-}
+mod parse;
 
 pub(crate) struct Command {
     stdin: PIn,
@@ -40,5 +34,50 @@ impl Command {
         self.inner
             .execute(&mut self.stdin, &mut self.stdout, &mut self.stderr)?;
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum InternalCommand {
+    Builtin(BuiltinCommand),
+    Invalid(InvalidCommand),
+    Path(PathCommand),
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Args(pub String);
+
+#[derive(Debug, Default, PartialEq)]
+struct InvalidCommand(pub String);
+
+#[derive(Debug, Default, PartialEq)]
+struct PathCommand {
+    pub path: PathBuf,
+    pub args: Args,
+}
+
+#[derive(Debug, PartialEq, EnumString)]
+enum BuiltinCommand {
+    #[strum(serialize = "exit")]
+    Exit(Args),
+    #[strum(serialize = "echo")]
+    Echo(Args),
+    #[strum(serialize = "type")]
+    Type(Args),
+    #[strum(serialize = "pwd")]
+    Pwd,
+    #[strum(serialize = "cd")]
+    Cd(Args),
+}
+
+impl BuiltinCommand {
+    fn with_args(self, args: Args) -> BuiltinCommand {
+        match self {
+            BuiltinCommand::Exit(_) => BuiltinCommand::Exit(args),
+            BuiltinCommand::Echo(_) => BuiltinCommand::Echo(args),
+            BuiltinCommand::Type(_) => BuiltinCommand::Type(args),
+            BuiltinCommand::Pwd => BuiltinCommand::Pwd,
+            BuiltinCommand::Cd(_) => BuiltinCommand::Cd(args),
+        }
     }
 }

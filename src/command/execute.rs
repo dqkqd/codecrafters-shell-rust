@@ -1,44 +1,19 @@
-use std::{env, path::PathBuf, str::FromStr};
+use std::{env, str::FromStr};
 
 use super::{
     io::{PErr, PIn, POut},
-    parse_cmd::{command_in_path, parse_i32},
-    Execute,
+    parse::{command_in_path, parse_i32},
+    Args, BuiltinCommand, InternalCommand, InvalidCommand, PathCommand,
 };
 use anyhow::Context;
-use strum_macros::EnumString;
 
-#[derive(Debug)]
-pub(super) enum InternalCommand {
-    Builtin(BuiltinCommand),
-    Invalid(InvalidCommand),
-    Path(PathCommand),
-}
-
-#[derive(Debug, Default, PartialEq)]
-pub(super) struct Args(pub String);
-
-#[derive(Debug, Default, PartialEq)]
-pub(super) struct InvalidCommand(pub String);
-
-#[derive(Debug, Default, PartialEq)]
-pub(super) struct PathCommand {
-    pub path: PathBuf,
-    pub args: Args,
-}
-
-#[derive(Debug, PartialEq, EnumString)]
-pub(super) enum BuiltinCommand {
-    #[strum(serialize = "exit")]
-    Exit(Args),
-    #[strum(serialize = "echo")]
-    Echo(Args),
-    #[strum(serialize = "type")]
-    Type(Args),
-    #[strum(serialize = "pwd")]
-    Pwd,
-    #[strum(serialize = "cd")]
-    Cd(Args),
+pub(super) trait Execute {
+    fn execute(
+        &mut self,
+        stdin: &mut PIn,
+        stdout: &mut POut,
+        stderr: &mut PErr,
+    ) -> anyhow::Result<()>;
 }
 
 impl Execute for InternalCommand {
