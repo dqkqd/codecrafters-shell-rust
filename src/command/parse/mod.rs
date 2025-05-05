@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use command::raw_command_arg;
 use redirect::raw_redirect_arg;
 use winnow::{
@@ -29,28 +29,29 @@ enum RedirectArg {
 
 pub(super) type ParseInput<'a, 'b> = &'a mut &'b str;
 
-pub(super) fn parse_command(input: ParseInput) -> Command {
-    let (_redirect_args, command_args) = args
-        .parse_next(input)
-        .unwrap_or_else(|_| panic!("cannot parse command {input}"));
+pub(super) fn parse_command(input: ParseInput) -> anyhow::Result<Command> {
+    match args.parse_next(input) {
+        Ok((_redirect_args, command_args)) => {
+            let (cmd, args) = command_args.split_first().unwrap();
+            let cmd = cmd.0.to_string();
+            let args = Args(args.iter().map(|v| v.0.to_string()).collect());
+            let command = match BuiltinCommand::from_str(&cmd) {
+                Ok(builtin) => InternalCommand::Builtin(builtin.with_args(args)),
+                Err(_) => match path_lookup(&cmd) {
+                    Ok(path) => InternalCommand::Path(PathCommand { path, args }),
+                    Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.to_string())),
+                },
+            };
 
-    let (cmd, args) = command_args.split_first().unwrap();
-    let cmd = cmd.0.to_string();
-    let args = Args(args.iter().map(|v| v.0.to_string()).collect());
-    let command = match BuiltinCommand::from_str(&cmd) {
-        Ok(builtin) => InternalCommand::Builtin(builtin.with_args(args)),
-        Err(_) => match path_lookup(&cmd) {
-            Ok(path) => InternalCommand::Path(PathCommand { path, args }),
-            Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.to_string())),
-        },
-    };
-
-    Command::new(
-        PIn::Std(io::stdin()),
-        POut::Std(io::stdout()),
-        PErr::Std(io::stderr()),
-        command,
-    )
+            Ok(Command::new(
+                PIn::Std(io::stdin()),
+                POut::Std(io::stdout()),
+                PErr::Std(io::stderr()),
+                command,
+            ))
+        }
+        Err(_) => bail!("cannot parse command `{}`", input),
+    }
 }
 
 pub(super) fn path_lookup(name: &str) -> anyhow::Result<PathBuf> {

@@ -35,7 +35,7 @@ impl Shell {
                     if raw_input.is_empty() {
                         continue;
                     }
-                    let mut command = Command::parse(&mut raw_input);
+                    let mut command = Command::parse(&mut raw_input)?;
                     command.execute()?;
                 }
             }

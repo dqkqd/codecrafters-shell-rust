@@ -26,7 +26,7 @@ impl Command {
         }
     }
 
-    pub fn parse(input: ParseInput) -> Command {
+    pub fn parse(input: ParseInput) -> anyhow::Result<Command> {
         parse_command(input)
     }
 
