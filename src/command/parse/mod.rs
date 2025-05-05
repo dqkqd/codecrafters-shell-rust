@@ -17,12 +17,6 @@ mod command;
 mod redirect;
 
 #[derive(Debug, PartialEq)]
-enum Arg {
-    Redirect(RedirectArg),
-    Command(CommandArg),
-}
-
-#[derive(Debug, PartialEq)]
 struct CommandArg(String);
 
 #[derive(Debug, PartialEq)]
@@ -36,7 +30,13 @@ enum RedirectArg {
 pub(super) type ParseInput<'a, 'b> = &'a mut &'b str;
 
 pub(super) fn parse_command(input: ParseInput) -> Command {
-    let (cmd, args) = args(input).unwrap_or_else(|_| panic!("cannot parse command {input}"));
+    let (_redirect_args, command_args) = args
+        .parse_next(input)
+        .unwrap_or_else(|_| panic!("cannot parse command {input}"));
+
+    let (cmd, args) = command_args.split_first().unwrap();
+    let cmd = cmd.0.to_string();
+    let args = Args(args.iter().map(|v| v.0.to_string()).collect());
     let command = match BuiltinCommand::from_str(&cmd) {
         Ok(builtin) => InternalCommand::Builtin(builtin.with_args(args)),
         Err(_) => match path_lookup(&cmd) {
@@ -63,28 +63,33 @@ pub(super) fn path_lookup(name: &str) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-fn args(input: ParseInput) -> ModalResult<(String, Args)> {
-    let args = raw_args.parse_next(input)?;
-    let args: Vec<String> = args
-        .into_iter()
-        .filter_map(|arg| match arg {
-            Arg::Redirect(_) => None,
-            Arg::Command(command) => Some(command.0),
-        })
-        .collect();
-    let (command, args) = args.split_first().unwrap();
-    Ok((command.to_string(), Args(args.to_vec())))
+/// Helper struct to parse redirect and command, because winnow does not allow different types.
+#[derive(Debug, PartialEq)]
+enum RedirectOrCommand {
+    Redirect(RedirectArg),
+    Command(CommandArg),
 }
 
-fn raw_args(input: ParseInput) -> ModalResult<Vec<Arg>> {
-    repeat(
+fn args(input: ParseInput) -> ModalResult<(Vec<RedirectArg>, Vec<CommandArg>)> {
+    let args: Vec<RedirectOrCommand> = repeat(
         1..,
         alt((
-            raw_redirect_arg.map(Arg::Redirect),
-            raw_command_arg.map(Arg::Command),
+            raw_redirect_arg.map(RedirectOrCommand::Redirect),
+            raw_command_arg.map(RedirectOrCommand::Command),
         )),
     )
-    .parse_next(input)
+    .parse_next(input)?;
+
+    let mut redirect_args = vec![];
+    let mut command_args = vec![];
+    for arg in args {
+        match arg {
+            RedirectOrCommand::Redirect(redirect_arg) => redirect_args.push(redirect_arg),
+            RedirectOrCommand::Command(command_arg) => command_args.push(command_arg),
+        }
+    }
+
+    Ok((redirect_args, command_args))
 }
 
 #[cfg(test)]
@@ -92,52 +97,36 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_args() {
+    fn only_command_args() {
         assert_eq!(
-            args(&mut "echo 1 2 3"),
-            Ok((
-                "echo".into(),
-                Args(vec!["1".into(), "2".into(), "3".into()])
-            ))
+            args(&mut "hello").unwrap(),
+            (vec![], vec![CommandArg("hello".into())])
         );
         assert_eq!(
-            args(&mut "echo 1 2 3  "),
-            Ok((
-                "echo".into(),
-                Args(vec!["1".into(), "2".into(), "3".into()])
-            ))
-        );
-        assert_eq!(args(&mut "echo"), Ok(("echo".into(), Args(vec![]))));
-    }
-
-    #[test]
-    fn test_raw_command_args() {
-        assert_eq!(
-            raw_args(&mut "hello").unwrap(),
-            [Arg::Command(CommandArg("hello".into()))],
+            args(&mut "hello world").unwrap(),
+            (
+                vec![],
+                vec![CommandArg("hello".into()), CommandArg("world".into()),],
+            )
         );
         assert_eq!(
-            raw_args(&mut "hello world").unwrap(),
-            [
-                Arg::Command(CommandArg("hello".into())),
-                Arg::Command(CommandArg("world".into())),
-            ],
-        );
-        assert_eq!(
-            raw_args(&mut "'hello' world").unwrap(),
-            [
-                Arg::Command(CommandArg("hello".into())),
-                Arg::Command(CommandArg("world".into())),
-            ],
+            args(&mut "'hello' world").unwrap(),
+            (
+                vec![],
+                vec![CommandArg("hello".into()), CommandArg("world".into()),],
+            )
         );
 
         assert_eq!(
-            raw_args(&mut "'hello world' hello world").unwrap(),
-            [
-                Arg::Command(CommandArg("hello world".into())),
-                Arg::Command(CommandArg("hello".into())),
-                Arg::Command(CommandArg("world".into())),
-            ],
+            args(&mut "'hello world' hello world").unwrap(),
+            (
+                vec![],
+                vec![
+                    CommandArg("hello world".into()),
+                    CommandArg("hello".into()),
+                    CommandArg("world".into()),
+                ],
+            )
         );
     }
 }
