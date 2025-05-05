@@ -206,8 +206,8 @@ $ "#,
 #[test]
 fn cd() {
     let tmp_dir = tempdir().unwrap();
-    let sub_dir = tmp_dir.path().join("level1").join("level2");
-    fs::create_dir_all(&sub_dir).unwrap();
+    let level2 = tmp_dir.path().join("level1").join("level2");
+    fs::create_dir_all(&level2).unwrap();
 
     Command::cargo_bin("codecrafters-shell")
         .unwrap()
@@ -218,7 +218,7 @@ fn cd() {
             r#"pwd
 cd {}
 pwd"#,
-            sub_dir.display()
+            level2.display()
         ))
         .assert()
         .success()
@@ -227,14 +227,14 @@ pwd"#,
 $ $ {}
 $ "#,
             tmp_dir.path().display(),
-            sub_dir.display()
+            level2.display()
         ));
 }
 
 #[test]
 fn cd_invalid_folder() {
     let tmp_dir = tempdir().unwrap();
-    let sub_dir = tmp_dir.path().join("level1").join("level2");
+    let level2_non_existed = tmp_dir.path().join("level1").join("level2");
 
     Command::cargo_bin("codecrafters-shell")
         .unwrap()
@@ -245,7 +245,7 @@ fn cd_invalid_folder() {
             r#"pwd
 cd {}
 pwd"#,
-            sub_dir.display()
+            level2_non_existed.display()
         ))
         .assert()
         .success()
@@ -258,6 +258,44 @@ $ "#,
         ))
         .stderr(format!(
             "cd: {}: No such file or directory\n",
-            sub_dir.display()
+            level2_non_existed.display()
+        ));
+}
+
+#[test]
+fn cd_relative() {
+    let tmp_dir = tempdir().unwrap();
+    let level1 = tmp_dir.path().join("level1");
+    let level2 = level1.join("level2");
+    fs::create_dir(&level1).unwrap();
+    fs::create_dir(&level2).unwrap();
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        // remove path to avoid using cd from path
+        .env("PATH", "")
+        .current_dir(tmp_dir.path()) // inside tmp path
+        .write_stdin(
+            r#"pwd
+cd level1
+pwd
+cd ./level2
+pwd
+cd ../..
+pwd
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(format!(
+            r#"$ {}
+$ $ {}
+$ $ {}
+$ $ {}
+$ "#,
+            tmp_dir.path().display(),
+            level1.display(),
+            level2.display(),
+            tmp_dir.path().display(),
         ));
 }
