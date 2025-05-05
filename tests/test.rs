@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 
 use assert_cmd::Command;
+use predicates::prelude::predicate;
 use tempfile::tempdir;
 
 #[test]
@@ -298,4 +299,19 @@ $ "#,
             level2.display(),
             tmp_dir.path().display(),
         ));
+}
+
+#[test]
+fn cd_tilde() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        // remove path to avoid using cd from path
+        .env("PATH", "")
+        .write_stdin(
+            r#"cd ~
+pwd"#,
+        )
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("/home/"));
 }

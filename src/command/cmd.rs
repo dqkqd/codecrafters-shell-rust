@@ -139,7 +139,10 @@ fn pwd_command(stdout: &mut POut) -> anyhow::Result<()> {
 
 fn cd_command(args: &mut Args, stderr: &mut PErr) -> anyhow::Result<()> {
     let path = args.0.split_whitespace().next();
-    if path.is_none_or(|path| std::env::set_current_dir(path).is_err()) {
+    if path.is_none_or(|path| {
+        let expanded_path = shellexpand::tilde(path);
+        std::env::set_current_dir(expanded_path.as_ref()).is_err()
+    }) {
         stderr.write_all_and_flush(
             format!(
                 "cd: {}: No such file or directory\n",
