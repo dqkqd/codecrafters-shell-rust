@@ -355,3 +355,21 @@ $ hello" world
 $ "#,
         );
 }
+
+#[test]
+fn backslash_outside_quotes() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"echo "before\   after"
+echo world\ \ \ \ \ \ script
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ before\   after
+$ world      script
+$ "#,
+        );
+}

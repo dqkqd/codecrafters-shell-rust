@@ -5,9 +5,9 @@ use std::str::FromStr;
 use anyhow::Context;
 use winnow::{
     ascii::{multispace0, space0},
-    combinator::{alt, delimited, fail, repeat},
+    combinator::{delimited, fail, repeat},
     stream::AsChar,
-    token::{rest, take, take_till, take_until},
+    token::{take, take_till, take_until},
     ModalResult, Parser,
 };
 
@@ -63,7 +63,7 @@ fn parse_arg(input: ParseInput) -> ModalResult<String> {
         let next = match input.as_bytes().first() {
             Some(b'\'') => parse_arg_single_quote.parse_next(input)?,
             Some(b'"') => &parse_arg_double_quote.parse_next(input)?,
-            Some(c) if !c.is_space() => parse_arg_no_quote.parse_next(input)?,
+            Some(c) if !c.is_space() => &parse_arg_no_quote.parse_next(input)?,
             _ => {
                 multispace0.parse_next(input)?;
                 if arg.is_empty() {
@@ -80,8 +80,23 @@ fn parse_arg_single_quote<'i>(input: ParseInput<'_, 'i>) -> ModalResult<&'i str>
     delimited('\'', take_until(1.., "'"), '\'').parse_next(input)
 }
 
-fn parse_arg_no_quote<'i>(input: ParseInput<'_, 'i>) -> ModalResult<&'i str> {
-    alt((take_till(1.., |c: char| " \t\'".contains(c)), rest)).parse_next(input)
+fn parse_arg_no_quote(input: ParseInput) -> ModalResult<String> {
+    let mut arg = String::new();
+    loop {
+        let next = take_till(0.., |c: char| " \t\\\'\"".contains(c)).parse_next(input)?;
+        arg.push_str(next);
+
+        if let Some(b'\\') = input.as_bytes().first() {
+            match take(2usize).parse_next(input)? {
+                "\\\n" => todo!(),
+                c => arg.push(c.chars().last().unwrap()),
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(arg)
 }
 
 fn parse_arg_double_quote(input: ParseInput) -> ModalResult<String> {
@@ -158,6 +173,8 @@ mod test {
             "hello\\x world"
         );
         assert_eq!(parse_arg(&mut "\"hello\\$\"").unwrap(), "hello$");
+
+        assert_eq!(parse_arg(&mut "hello\\ world").unwrap(), "hello world");
 
         assert!(parse_arg(&mut " ").is_err())
     }
