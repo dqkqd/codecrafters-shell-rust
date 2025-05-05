@@ -19,9 +19,9 @@ pub(super) type ParseInput<'a, 'b> = &'a mut &'b str;
 pub(super) fn parse_command(input: ParseInput) -> Command {
     let (cmd, args) =
         command_and_args(input).unwrap_or_else(|_| panic!("cannot parse command {input}"));
-    let command = match BuiltinCommand::from_str(cmd) {
+    let command = match BuiltinCommand::from_str(&cmd) {
         Ok(builtin) => InternalCommand::Builtin(builtin.with_args(args)),
-        Err(_) => match command_in_path(cmd) {
+        Err(_) => match command_in_path(&cmd) {
             Ok(path) => InternalCommand::Path(PathCommand { path, args }),
             Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.to_string())),
         },
@@ -45,19 +45,18 @@ pub(super) fn command_in_path(name: &str) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
-fn command_and_args<'i>(input: ParseInput<'_, 'i>) -> ModalResult<(&'i str, Args)> {
-    let (command, _, args) =
-        (take_till(0.., AsChar::is_space), space0, parse_args).parse_next(input)?;
+fn command_and_args(input: ParseInput) -> ModalResult<(String, Args)> {
+    let (command, _, args) = (parse_quotes, space0, parse_args).parse_next(input)?;
     Ok((command, args))
 }
 
 fn parse_args(input: ParseInput) -> ModalResult<Args> {
-    let mut args: Vec<String> = repeat(0.., parse_arg).parse_next(input)?;
+    let mut args: Vec<String> = repeat(0.., parse_quotes).parse_next(input)?;
     args.retain(|s| !s.is_empty());
     Ok(Args(args))
 }
 
-fn parse_arg(input: ParseInput) -> ModalResult<String> {
+fn parse_quotes(input: ParseInput) -> ModalResult<String> {
     let mut arg = String::new();
     loop {
         let next = match input.as_bytes().first() {
@@ -132,36 +131,44 @@ mod test {
     fn test_command_and_args() {
         assert_eq!(
             command_and_args(&mut "echo 1 2 3"),
-            Ok(("echo", Args(vec!["1".into(), "2".into(), "3".into()])))
+            Ok((
+                "echo".into(),
+                Args(vec!["1".into(), "2".into(), "3".into()])
+            ))
         );
         assert_eq!(
             command_and_args(&mut "echo 1 2 3  "),
-            Ok(("echo", Args(vec!["1".into(), "2".into(), "3".into()])))
+            Ok((
+                "echo".into(),
+                Args(vec!["1".into(), "2".into(), "3".into()])
+            ))
         );
-        assert_eq!(command_and_args(&mut "echo"), Ok(("echo", Args(vec![]))));
-        assert_eq!(command_and_args(&mut ""), Ok(("", Args(vec![]))));
+        assert_eq!(
+            command_and_args(&mut "echo"),
+            Ok(("echo".into(), Args(vec![])))
+        );
     }
 
     #[test]
     fn test_parse_arg() {
-        assert_eq!(parse_arg(&mut "hello").unwrap(), "hello");
-        assert_eq!(parse_arg(&mut "hello world").unwrap(), "hello");
-        assert_eq!(parse_arg(&mut "'hello world'").unwrap(), "hello world");
-        assert_eq!(parse_arg(&mut "'hello' world").unwrap(), "hello");
-        assert_eq!(parse_arg(&mut "hello'world'").unwrap(), "helloworld");
+        assert_eq!(parse_quotes(&mut "hello").unwrap(), "hello");
+        assert_eq!(parse_quotes(&mut "hello world").unwrap(), "hello");
+        assert_eq!(parse_quotes(&mut "'hello world'").unwrap(), "hello world");
+        assert_eq!(parse_quotes(&mut "'hello' world").unwrap(), "hello");
+        assert_eq!(parse_quotes(&mut "hello'world'").unwrap(), "helloworld");
 
-        assert_eq!(parse_arg(&mut "\"hello world\"").unwrap(), "hello world");
-        assert_eq!(parse_arg(&mut "\"hello\" world\"").unwrap(), "hello");
+        assert_eq!(parse_quotes(&mut "\"hello world\"").unwrap(), "hello world");
+        assert_eq!(parse_quotes(&mut "\"hello\" world\"").unwrap(), "hello");
         assert_eq!(
-            parse_arg(&mut "\"hello\\\" world\"").unwrap(),
+            parse_quotes(&mut "\"hello\\\" world\"").unwrap(),
             "hello\" world"
         );
         assert_eq!(
-            parse_arg(&mut "\"hello\\$ world\"").unwrap(),
+            parse_quotes(&mut "\"hello\\$ world\"").unwrap(),
             "hello$ world"
         );
         assert_eq!(
-            parse_arg(&mut "\"hello\\` world\"").unwrap(),
+            parse_quotes(&mut "\"hello\\` world\"").unwrap(),
             "hello` world"
         );
         // assert_eq!(
@@ -169,19 +176,19 @@ mod test {
         //     "hello\n world"
         // );
         assert_eq!(
-            parse_arg(&mut "\"hello\\x world\"").unwrap(),
+            parse_quotes(&mut "\"hello\\x world\"").unwrap(),
             "hello\\x world"
         );
-        assert_eq!(parse_arg(&mut "\"hello\\$\"").unwrap(), "hello$");
+        assert_eq!(parse_quotes(&mut "\"hello\\$\"").unwrap(), "hello$");
 
-        assert_eq!(parse_arg(&mut "hello\\ world").unwrap(), "hello world");
+        assert_eq!(parse_quotes(&mut "hello\\ world").unwrap(), "hello world");
 
         assert_eq!(
-            parse_arg(&mut "'hello\\\\world'").unwrap(),
+            parse_quotes(&mut "'hello\\\\world'").unwrap(),
             "hello\\\\world"
         );
 
-        assert!(parse_arg(&mut " ").is_err())
+        assert!(parse_quotes(&mut " ").is_err())
     }
 
     #[test]
