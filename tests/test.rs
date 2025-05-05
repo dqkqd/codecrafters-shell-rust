@@ -391,3 +391,21 @@ $ example\"testhello\"shell
 $ "#,
         );
 }
+
+#[test]
+fn backslash_within_double_quotes() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"echo "hello'script'\\n'world"
+echo "hello\"insidequotes"script\"
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ hello'script'\n'world
+$ hello"insidequotesscript"
+$ "#,
+        );
+}
