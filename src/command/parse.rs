@@ -176,6 +176,11 @@ mod test {
 
         assert_eq!(parse_arg(&mut "hello\\ world").unwrap(), "hello world");
 
+        assert_eq!(
+            parse_arg(&mut "'hello\\\\world'").unwrap(),
+            "hello\\\\world"
+        );
+
         assert!(parse_arg(&mut " ").is_err())
     }
 

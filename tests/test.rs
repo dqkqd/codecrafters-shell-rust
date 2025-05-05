@@ -373,3 +373,21 @@ $ world      script
 $ "#,
         );
 }
+
+#[test]
+fn backslash_within_single_quotes() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"echo 'shell\\\nscript'
+echo 'example\"testhello\"shell'
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ shell\\\nscript
+$ example\"testhello\"shell
+$ "#,
+        );
+}
