@@ -7,7 +7,7 @@ use winnow::{
 
 use super::{CommandArg, ParseInput};
 
-pub(super) fn raw_command_arg(input: ParseInput) -> ModalResult<CommandArg> {
+pub(super) fn command_arg(input: ParseInput) -> ModalResult<CommandArg> {
     preceded(
         multispace0,
         repeat(1.., alt((single_quote, double_quote, no_quote)))
@@ -81,43 +81,43 @@ mod test {
     #[test]
     fn test_raw_command_arg() {
         assert_eq!(
-            raw_command_arg(&mut "hello").unwrap(),
+            command_arg(&mut "hello").unwrap(),
             CommandArg("hello".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "hello world").unwrap(),
+            command_arg(&mut "hello world").unwrap(),
             CommandArg("hello".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "'hello world'").unwrap(),
+            command_arg(&mut "'hello world'").unwrap(),
             CommandArg("hello world".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "'hello' world").unwrap(),
+            command_arg(&mut "'hello' world").unwrap(),
             CommandArg("hello".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "hello'world'").unwrap(),
+            command_arg(&mut "hello'world'").unwrap(),
             CommandArg("helloworld".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "\"hello world\"").unwrap(),
+            command_arg(&mut "\"hello world\"").unwrap(),
             CommandArg("hello world".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "\"hello\" world\"").unwrap(),
+            command_arg(&mut "\"hello\" world\"").unwrap(),
             CommandArg("hello".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "\"hello\\\" world\"").unwrap(),
+            command_arg(&mut "\"hello\\\" world\"").unwrap(),
             CommandArg("hello\" world".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "\"hello\\$ world\"").unwrap(),
+            command_arg(&mut "\"hello\\$ world\"").unwrap(),
             CommandArg("hello$ world".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "\"hello\\` world\"").unwrap(),
+            command_arg(&mut "\"hello\\` world\"").unwrap(),
             CommandArg("hello` world".into())
         );
         // // assert_eq!(
@@ -125,24 +125,24 @@ mod test {
         // //     "hello\n world"
         // // );
         assert_eq!(
-            raw_command_arg(&mut "\"hello\\x world\"").unwrap(),
+            command_arg(&mut "\"hello\\x world\"").unwrap(),
             CommandArg("hello\\x world".into())
         );
         assert_eq!(
-            raw_command_arg(&mut "\"hello\\$\"").unwrap(),
+            command_arg(&mut "\"hello\\$\"").unwrap(),
             CommandArg("hello$".into())
         );
 
         assert_eq!(
-            raw_command_arg(&mut "hello\\ world").unwrap(),
+            command_arg(&mut "hello\\ world").unwrap(),
             CommandArg("hello world".into())
         );
 
         assert_eq!(
-            raw_command_arg(&mut "'hello\\\\world'").unwrap(),
+            command_arg(&mut "'hello\\\\world'").unwrap(),
             CommandArg("hello\\\\world".into())
         );
 
-        assert!(raw_command_arg(&mut " ").is_err())
+        assert!(command_arg(&mut " ").is_err())
     }
 }

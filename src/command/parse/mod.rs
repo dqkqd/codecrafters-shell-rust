@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::{bail, Context};
-use command::raw_command_arg;
-use redirect::raw_redirect_arg;
+use command::command_arg;
+use redirect::redirect_arg;
 use winnow::{
     combinator::{alt, repeat},
     ModalResult, Parser,
@@ -23,8 +23,6 @@ struct CommandArg(String);
 enum RedirectArg {
     Output { n: i32, word: String },
     AppendOutput { n: i32, word: String },
-    OutputAndError { word: String },
-    AppendOutputAndError { word: String },
 }
 
 pub(super) type ParseInput<'a, 'b> = &'a mut &'b str;
@@ -99,8 +97,8 @@ fn args(input: ParseInput) -> ModalResult<(Vec<CommandArg>, Vec<RedirectArg>)> {
     let args: Vec<RedirectOrCommand> = repeat(
         1..,
         alt((
-            raw_redirect_arg.map(RedirectOrCommand::Redirect),
-            raw_command_arg.map(RedirectOrCommand::Command),
+            redirect_arg.map(RedirectOrCommand::Redirect),
+            command_arg.map(RedirectOrCommand::Command),
         )),
     )
     .parse_next(input)?;
@@ -198,6 +196,28 @@ mod test {
             (
                 vec![CommandArg("echo".into()), CommandArg("hello".into()),],
                 vec![RedirectArg::Output {
+                    n: 2,
+                    word: "file".into()
+                },],
+            )
+        );
+
+        assert_eq!(
+            args(&mut "echo hello >> file").unwrap(),
+            (
+                vec![CommandArg("echo".into()), CommandArg("hello".into()),],
+                vec![RedirectArg::AppendOutput {
+                    n: 1,
+                    word: "file".into()
+                },],
+            )
+        );
+
+        assert_eq!(
+            args(&mut "echo hello 2>> file").unwrap(),
+            (
+                vec![CommandArg("echo".into()), CommandArg("hello".into()),],
+                vec![RedirectArg::AppendOutput {
                     n: 2,
                     word: "file".into()
                 },],
