@@ -10,14 +10,19 @@ mod io;
 mod parse;
 
 pub(crate) struct Command {
-    stdin: PIn,
-    stdout: POut,
-    stderr: PErr,
+    stdin: Vec<PIn>,
+    stdout: Vec<POut>,
+    stderr: Vec<PErr>,
     inner: InternalCommand,
 }
 
 impl Command {
-    fn new(stdin: PIn, stdout: POut, stderr: PErr, command: InternalCommand) -> Command {
+    fn new(
+        stdin: Vec<PIn>,
+        stdout: Vec<POut>,
+        stderr: Vec<PErr>,
+        command: InternalCommand,
+    ) -> Command {
         Command {
             stdin,
             stdout,
@@ -32,7 +37,7 @@ impl Command {
 
     pub fn execute(&mut self) -> anyhow::Result<()> {
         self.inner
-            .execute(&mut self.stdin, &mut self.stdout, &mut self.stderr)?;
+            .execute(self.stdin.as_mut(), &mut self.stdout, &mut self.stderr)?;
         Ok(())
     }
 }
@@ -45,7 +50,7 @@ enum InternalCommand {
 }
 
 #[derive(Debug, Default, PartialEq)]
-struct Args(pub Vec<String>);
+struct ProgramArgs(pub Vec<String>);
 
 #[derive(Debug, Default, PartialEq)]
 struct InvalidCommand(pub String);
@@ -53,25 +58,25 @@ struct InvalidCommand(pub String);
 #[derive(Debug, Default, PartialEq)]
 struct PathCommand {
     pub path: PathBuf,
-    pub args: Args,
+    pub args: ProgramArgs,
 }
 
 #[derive(Debug, PartialEq, EnumString)]
 enum BuiltinCommand {
     #[strum(serialize = "exit")]
-    Exit(Args),
+    Exit(ProgramArgs),
     #[strum(serialize = "echo")]
-    Echo(Args),
+    Echo(ProgramArgs),
     #[strum(serialize = "type")]
-    Type(Args),
+    Type(ProgramArgs),
     #[strum(serialize = "pwd")]
     Pwd,
     #[strum(serialize = "cd")]
-    Cd(Args),
+    Cd(ProgramArgs),
 }
 
 impl BuiltinCommand {
-    fn with_args(self, args: Args) -> BuiltinCommand {
+    fn with_args(self, args: ProgramArgs) -> BuiltinCommand {
         match self {
             BuiltinCommand::Exit(_) => BuiltinCommand::Exit(args),
             BuiltinCommand::Echo(_) => BuiltinCommand::Echo(args),

@@ -10,8 +10,8 @@ use winnow::{
     ModalResult, Parser,
 };
 
-use super::io::{PErr, PIn, POut};
-use super::{Args, BuiltinCommand, Command, InternalCommand, InvalidCommand, PathCommand};
+use super::io::{PErr, PIn, POut, PType};
+use super::{BuiltinCommand, Command, InternalCommand, InvalidCommand, PathCommand, ProgramArgs};
 
 mod command;
 mod redirect;
@@ -29,32 +29,56 @@ enum RedirectArg {
 
 pub(super) type ParseInput<'a, 'b> = &'a mut &'b str;
 
-pub(super) fn parse_command(input: ParseInput) -> anyhow::Result<Command> {
+pub(crate) fn parse_command(input: ParseInput) -> anyhow::Result<Command> {
     match args.parse_next(input) {
-        Ok((_redirect_args, command_args)) => {
-            let (cmd, args) = command_args.split_first().unwrap();
-            let cmd = cmd.0.to_string();
-            let args = Args(args.iter().map(|v| v.0.to_string()).collect());
-            let command = match BuiltinCommand::from_str(&cmd) {
+        Ok((mut command_args, redirect_args)) => {
+            if command_args.is_empty() {
+                bail!("invalid command: `{input}`")
+            }
+
+            let redirect_pipes = redirect_args
+                .into_iter()
+                .map(|r| r.into_pipe())
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            let mut stdin = vec![];
+            let mut stdout = vec![];
+            let mut stderr = vec![];
+            for ptype in redirect_pipes {
+                match ptype {
+                    PType::In(pin) => stdin.push(pin),
+                    PType::Out(pout) => stdout.push(pout),
+                    PType::Err(perr) => stderr.push(perr),
+                }
+            }
+            if stdin.is_empty() {
+                stdin.push(PIn::Std(io::stdin()))
+            }
+            if stdout.is_empty() {
+                stdout.push(POut::Std(io::stdout()))
+            }
+            if stderr.is_empty() {
+                stderr.push(PErr::Std(io::stderr()))
+            }
+
+            let cmd = command_args.remove(0);
+
+            let args = ProgramArgs(command_args.into_iter().map(|v| v.0).collect());
+            let command = match BuiltinCommand::from_str(&cmd.0) {
                 Ok(builtin) => InternalCommand::Builtin(builtin.with_args(args)),
-                Err(_) => match path_lookup(&cmd) {
+                Err(_) => match path_lookup(&cmd.0) {
                     Ok(path) => InternalCommand::Path(PathCommand { path, args }),
-                    Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.to_string())),
+                    Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.0)),
                 },
             };
 
-            Ok(Command::new(
-                PIn::Std(io::stdin()),
-                POut::Std(io::stdout()),
-                PErr::Std(io::stderr()),
-                command,
-            ))
+            Ok(Command::new(stdin, stdout, stderr, command))
         }
         Err(_) => bail!("cannot parse command `{}`", input),
     }
 }
 
-pub(super) fn path_lookup(name: &str) -> anyhow::Result<PathBuf> {
+pub(crate) fn path_lookup(name: &str) -> anyhow::Result<PathBuf> {
     let paths = std::env::var("PATH")?;
     let path = paths
         .split(":")
@@ -71,7 +95,7 @@ enum RedirectOrCommand {
     Command(CommandArg),
 }
 
-fn args(input: ParseInput) -> ModalResult<(Vec<RedirectArg>, Vec<CommandArg>)> {
+fn args(input: ParseInput) -> ModalResult<(Vec<CommandArg>, Vec<RedirectArg>)> {
     let args: Vec<RedirectOrCommand> = repeat(
         1..,
         alt((
@@ -90,7 +114,7 @@ fn args(input: ParseInput) -> ModalResult<(Vec<RedirectArg>, Vec<CommandArg>)> {
         }
     }
 
-    Ok((redirect_args, command_args))
+    Ok((command_args, redirect_args))
 }
 
 #[cfg(test)]
@@ -101,32 +125,82 @@ mod test {
     fn only_command_args() {
         assert_eq!(
             args(&mut "hello").unwrap(),
-            (vec![], vec![CommandArg("hello".into())])
+            (vec![CommandArg("hello".into())], vec![],)
         );
         assert_eq!(
             args(&mut "hello world").unwrap(),
             (
-                vec![],
                 vec![CommandArg("hello".into()), CommandArg("world".into()),],
+                vec![],
             )
         );
         assert_eq!(
             args(&mut "'hello' world").unwrap(),
             (
-                vec![],
                 vec![CommandArg("hello".into()), CommandArg("world".into()),],
+                vec![],
             )
         );
 
         assert_eq!(
             args(&mut "'hello world' hello world").unwrap(),
             (
-                vec![],
                 vec![
                     CommandArg("hello world".into()),
                     CommandArg("hello".into()),
                     CommandArg("world".into()),
                 ],
+                vec![],
+            )
+        );
+    }
+
+    #[test]
+    fn only_redirect_args() {
+        assert_eq!(
+            args(&mut "> file").unwrap(),
+            (
+                vec![],
+                vec![RedirectArg::Output {
+                    n: 1,
+                    word: "file".into()
+                },],
+            )
+        );
+
+        assert_eq!(
+            args(&mut "2>|file").unwrap(),
+            (
+                vec![],
+                vec![RedirectArg::Output {
+                    n: 2,
+                    word: "file".into()
+                },],
+            )
+        );
+    }
+
+    #[test]
+    fn command_args_and_redirect_args() {
+        assert_eq!(
+            args(&mut "echo > file").unwrap(),
+            (
+                vec![CommandArg("echo".into())],
+                vec![RedirectArg::Output {
+                    n: 1,
+                    word: "file".into()
+                },],
+            )
+        );
+
+        assert_eq!(
+            args(&mut "echo hello 2>|file").unwrap(),
+            (
+                vec![CommandArg("echo".into()), CommandArg("hello".into()),],
+                vec![RedirectArg::Output {
+                    n: 2,
+                    word: "file".into()
+                },],
             )
         );
     }

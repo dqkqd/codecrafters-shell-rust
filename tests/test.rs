@@ -409,3 +409,79 @@ $ hello"insidequotesscript"
 $ "#,
         );
 }
+
+#[test]
+fn redirect_output_stdout() {
+    let tmp_dir = tempdir().unwrap();
+    let output = tmp_dir.path().join("output");
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(format!(
+            r#"echo before
+echo > {} "hello world"
+cat {}
+echo after
+"#,
+            output.display(),
+            output.display(),
+        ))
+        .assert()
+        .success()
+        .stdout(
+            r#"$ before
+$ $ hello world
+$ after
+$ "#,
+        );
+}
+
+#[test]
+fn redirect_output_stdout_multi() {
+    let tmp_dir = tempdir().unwrap();
+    let output1 = tmp_dir.path().join("output1");
+    let output2 = tmp_dir.path().join("output2");
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(format!(
+            r#"echo > {} > {} "hello world"
+cat {}
+cat {}
+"#,
+            output1.display(),
+            output2.display(),
+            output1.display(),
+            output2.display(),
+        ))
+        .assert()
+        .success()
+        .stdout(
+            r#"$ $ hello world
+$ hello world
+$ "#,
+        );
+}
+
+#[test]
+fn redirect_output_stderr() {
+    let tmp_dir = tempdir().unwrap();
+    let output = tmp_dir.path().join("output");
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .current_dir(tmp_dir.path()) // inside tmp path
+        .write_stdin(format!(
+            r#"cd 2> {} invalid_path
+cat {}"#,
+            output.display(),
+            output.display(),
+        ))
+        .assert()
+        .success()
+        .stdout(
+            r#"$ $ cd: invalid_path: No such file or directory
+$ "#,
+        )
+        .stderr("");
+}
