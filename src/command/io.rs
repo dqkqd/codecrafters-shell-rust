@@ -9,12 +9,10 @@ pub(crate) enum POut {
     Std(io::Stdout),
 }
 
-#[allow(unused)]
 pub(crate) enum PErr {
     Std(io::Stderr),
 }
 
-#[allow(unused)]
 impl PErr {
     pub fn write_all_and_flush(&mut self, data: &[u8]) -> anyhow::Result<()> {
         match self {
