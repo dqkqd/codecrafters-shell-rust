@@ -2,7 +2,7 @@ use std::{env, str::FromStr};
 
 use super::{
     io::{PErr, PIn, POut},
-    parse::command_in_path,
+    parse::path_lookup,
     Args, BuiltinCommand, InternalCommand, InvalidCommand, PathCommand,
 };
 use anyhow::Context;
@@ -103,7 +103,7 @@ fn type_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
             Ok(_) => {
                 stdout.write_all_and_flush(format!("{arg} is a shell builtin\n").as_bytes())?
             }
-            Err(_) => match command_in_path(arg) {
+            Err(_) => match path_lookup(arg) {
                 Ok(path) => stdout.write_all_and_flush(
                     format!("{arg} is {}\n", path.as_path().display()).as_bytes(),
                 )?,
