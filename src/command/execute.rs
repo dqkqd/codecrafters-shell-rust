@@ -2,7 +2,7 @@ use std::{env, str::FromStr};
 
 use super::{
     io::{PErr, PIn, POut},
-    parse::{command_in_path, parse_i32},
+    parse::command_in_path,
     Args, BuiltinCommand, InternalCommand, InvalidCommand, PathCommand,
 };
 use anyhow::Context;
@@ -49,7 +49,7 @@ impl Execute for PathCommand {
                 .file_name()
                 .with_context(|| format!("invalid filename for path `{}`", self.path.display()))?,
         )
-        .args(self.args.0.split_whitespace().collect::<Vec<_>>())
+        .args(&self.args.0)
         .output()?;
         stdout.write_all_and_flush(&output.stdout)?;
         stderr.write_all_and_flush(&output.stderr)?;
@@ -70,18 +70,26 @@ impl Execute for BuiltinCommand {
 }
 
 fn exit_command(args: &mut Args, stderr: &mut PErr) -> anyhow::Result<()> {
-    if let Ok(code) = parse_i32(&mut args.0.as_ref()) {
-        std::process::exit(code)
-    };
-    stderr.write_all_and_flush(format!("invalid args: {}", args.0).as_bytes())?;
-    Ok(())
+    match args.0.first_mut() {
+        Some(code) => match code.parse::<i32>() {
+            Ok(code) => std::process::exit(code),
+            Err(_) => {
+                stderr.write_all_and_flush(
+                    format!("invalid args: [{}]", args.0.join(",")).as_bytes(),
+                )?;
+                std::process::exit(-1);
+            }
+        },
+        // no args given
+        None => std::process::exit(0),
+    }
 }
 
 fn echo_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
-    let mut args = args.0.split_whitespace().peekable();
-    while let Some(arg) = args.next() {
+    let mut iter = args.0.iter().peekable();
+    while let Some(arg) = iter.next() {
         stdout.write_all_and_flush(arg.as_bytes())?;
-        if args.peek().is_some() {
+        if iter.peek().is_some() {
             stdout.write_all_and_flush(b" ")?;
         }
     }
@@ -90,7 +98,7 @@ fn echo_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
 }
 
 fn type_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
-    for arg in args.0.split_whitespace() {
+    for arg in &args.0 {
         match BuiltinCommand::from_str(arg) {
             Ok(_) => {
                 stdout.write_all_and_flush(format!("{arg} is a shell builtin\n").as_bytes())?
@@ -113,18 +121,18 @@ fn pwd_command(stdout: &mut POut) -> anyhow::Result<()> {
 }
 
 fn cd_command(args: &mut Args, stderr: &mut PErr) -> anyhow::Result<()> {
-    let path = args.0.split_whitespace().next();
-    if path.is_none_or(|path| {
-        let expanded_path = shellexpand::tilde(path);
-        std::env::set_current_dir(expanded_path.as_ref()).is_err()
-    }) {
-        stderr.write_all_and_flush(
-            format!(
-                "cd: {}: No such file or directory\n",
-                path.unwrap_or_default()
-            )
-            .as_bytes(),
-        )?;
+    match &args.0[..] {
+        [path] => {
+            let expanded_path = shellexpand::tilde(&path);
+            if std::env::set_current_dir(expanded_path.as_ref()).is_err() {
+                stderr.write_all_and_flush(
+                    format!("cd: {path}: No such file or directory\n").as_bytes(),
+                )?;
+            }
+        }
+        _ => {
+            stderr.write_all_and_flush("cd: No path given".as_bytes())?;
+        }
     }
     Ok(())
 }

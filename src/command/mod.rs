@@ -45,7 +45,7 @@ enum InternalCommand {
 }
 
 #[derive(Debug, Default, PartialEq)]
-struct Args(pub String);
+struct Args(pub Vec<String>);
 
 #[derive(Debug, Default, PartialEq)]
 struct InvalidCommand(pub String);

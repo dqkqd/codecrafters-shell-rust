@@ -315,3 +315,23 @@ pwd"#,
         .success()
         .stdout(predicate::str::contains("/home/"));
 }
+
+#[test]
+fn single_quote() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"echo 'shell hello'
+echo 'world     test'
+echo 'world     example' 'test''script'
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ shell hello
+$ world     test
+$ world     example testscript
+$ "#,
+        );
+}
