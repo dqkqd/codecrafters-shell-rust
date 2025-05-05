@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{env, path::PathBuf, str::FromStr};
 
 use super::{
     io::{PErr, PIn, POut},
@@ -34,6 +34,8 @@ pub(super) enum BuiltinCommand {
     Echo(Args),
     #[strum(serialize = "type")]
     Type(Args),
+    #[strum(serialize = "pwd")]
+    Pwd(Args),
 }
 
 impl Execute for InternalCommand {
@@ -83,6 +85,7 @@ impl Execute for BuiltinCommand {
             BuiltinCommand::Exit(args) => exit_command(args, stderr),
             BuiltinCommand::Echo(args) => echo_command(args, stdout),
             BuiltinCommand::Type(args) => type_command(args, stdout),
+            BuiltinCommand::Pwd(args) => pwd_command(stdout),
         }
     }
 }
@@ -121,5 +124,11 @@ fn type_command(args: &mut Args, stdout: &mut POut) -> anyhow::Result<()> {
             },
         }
     }
+    Ok(())
+}
+
+fn pwd_command(stdout: &mut POut) -> anyhow::Result<()> {
+    let current_dir = env::current_dir()?;
+    stdout.write_all_and_flush(format!("{}\n", current_dir.as_path().display()).as_bytes())?;
     Ok(())
 }

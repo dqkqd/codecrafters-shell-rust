@@ -23,6 +23,7 @@ impl BuiltinCommand {
             BuiltinCommand::Exit(_) => BuiltinCommand::Exit(args),
             BuiltinCommand::Echo(_) => BuiltinCommand::Echo(args),
             BuiltinCommand::Type(_) => BuiltinCommand::Type(args),
+            BuiltinCommand::Pwd(args) => BuiltinCommand::Pwd(args),
         }
     }
 }

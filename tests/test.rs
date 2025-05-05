@@ -183,3 +183,22 @@ file3
 $ "#,
         );
 }
+
+#[test]
+fn pwd() {
+    let tmp_dir = tempdir().unwrap();
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        // remove path to avoid using pwd from path
+        .env("PATH", "")
+        .write_stdin("pwd")
+        .current_dir(tmp_dir.path())
+        .assert()
+        .success()
+        .stdout(format!(
+            r#"$ {}
+$ "#,
+            tmp_dir.path().display()
+        ));
+}
