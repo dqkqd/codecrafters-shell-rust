@@ -1,6 +1,8 @@
 use std::io;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+use anyhow::Context;
 use winnow::ascii::{digit1, space0};
 use winnow::stream::AsChar;
 use winnow::token::{rest, take_till};
@@ -9,7 +11,7 @@ use winnow::Parser;
 
 use crate::command::cmd::BuiltinCommand;
 
-use super::cmd::{Args, InternalCommand, InvalidCommand};
+use super::cmd::{Args, InternalCommand, InvalidCommand, PathCommand};
 use super::io::{PErr, PIn, POut};
 use super::Command;
 
@@ -32,7 +34,10 @@ pub(super) fn parse_command(input: ParseInput) -> Command {
 
     let command = match BuiltinCommand::from_str(cmd) {
         Ok(builtin) => InternalCommand::Builtin(builtin.with_args(args)),
-        Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.to_string())),
+        Err(_) => match command_in_path(cmd) {
+            Ok(path) => InternalCommand::Path(PathCommand { path, args }),
+            Err(_) => InternalCommand::Invalid(InvalidCommand(cmd.to_string())),
+        },
     };
 
     Command::new(
@@ -50,6 +55,16 @@ fn command_and_args<'i>(input: ParseInput<'_, 'i>) -> ModalResult<(&'i str, &'i 
 
 pub(super) fn parse_i32(input: ParseInput) -> ModalResult<i32> {
     digit1.try_map(str::parse).parse_next(input)
+}
+
+pub(super) fn command_in_path(name: &str) -> anyhow::Result<PathBuf> {
+    let paths = std::env::var("PATH")?;
+    let path = paths
+        .split(":")
+        .map(|path| PathBuf::from(path).join(name))
+        .find(|path| path.is_file())
+        .with_context(|| format!("missing executable file command, {name}"))?;
+    Ok(path)
 }
 
 #[cfg(test)]

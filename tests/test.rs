@@ -1,4 +1,7 @@
+use std::{env::current_dir, fs::File};
+
 use assert_cmd::Command;
+use tempfile::tempdir;
 
 #[test]
 fn print_a_prompt() {
@@ -140,4 +143,23 @@ type is a shell builtin
 invalid_command: not found
 $ "#,
         );
+}
+
+#[test]
+fn ty_path_command() {
+    let tmp_dir = tempdir().unwrap();
+    let executable_path = tmp_dir.path().join("my_executable");
+    File::create(&executable_path).unwrap();
+
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .env("PATH", tmp_dir.path().as_os_str())
+        .write_stdin("type my_executable")
+        .assert()
+        .success()
+        .stdout(format!(
+            r#"$ my_executable is {}
+$ "#,
+            executable_path.as_path().display()
+        ));
 }

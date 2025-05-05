@@ -16,7 +16,7 @@ pub(crate) enum PErr {
 
 #[allow(unused)]
 impl PErr {
-    pub fn write_all_and_flush(&mut self, data: &str) -> anyhow::Result<()> {
+    pub fn write_all_and_flush(&mut self, data: &[u8]) -> anyhow::Result<()> {
         match self {
             PErr::Std(stderr) => write_all_and_flush(stderr, data)?,
         }
@@ -25,7 +25,7 @@ impl PErr {
 }
 
 impl POut {
-    pub fn write_all_and_flush(&mut self, data: &str) -> anyhow::Result<()> {
+    pub fn write_all_and_flush(&mut self, data: &[u8]) -> anyhow::Result<()> {
         match self {
             POut::Std(stdout) => write_all_and_flush(stdout, data)?,
         }
@@ -33,8 +33,8 @@ impl POut {
     }
 }
 
-fn write_all_and_flush<W: Write>(w: &mut W, data: &str) -> anyhow::Result<()> {
-    w.write_all(data.as_bytes())?;
+fn write_all_and_flush<W: Write>(w: &mut W, data: &[u8]) -> anyhow::Result<()> {
+    w.write_all(data)?;
     w.flush()?;
     Ok(())
 }
