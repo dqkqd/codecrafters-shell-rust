@@ -7,7 +7,7 @@ use winnow::{
     ascii::{multispace0, space0},
     combinator::{alt, delimited, fail, repeat},
     stream::AsChar,
-    token::{rest, take_till, take_until},
+    token::{rest, take, take_till, take_until},
     ModalResult, Parser,
 };
 
@@ -61,10 +61,9 @@ fn parse_arg(input: ParseInput) -> ModalResult<String> {
     let mut arg = String::new();
     loop {
         let next = match input.as_bytes().first() {
-            Some(b'\'') => delimited('\'', take_until(1.., "'"), '\'').parse_next(input)?,
-            Some(c) if !c.is_space() => {
-                alt((take_till(1.., |c: char| " \t\'".contains(c)), rest)).parse_next(input)?
-            }
+            Some(b'\'') => parse_arg_single_quote.parse_next(input)?,
+            Some(b'"') => &parse_arg_double_quote.parse_next(input)?,
+            Some(c) if !c.is_space() => parse_arg_no_quote.parse_next(input)?,
             _ => {
                 multispace0.parse_next(input)?;
                 if arg.is_empty() {
@@ -74,6 +73,39 @@ fn parse_arg(input: ParseInput) -> ModalResult<String> {
             }
         };
         arg.push_str(next);
+    }
+}
+
+fn parse_arg_single_quote<'i>(input: ParseInput<'_, 'i>) -> ModalResult<&'i str> {
+    delimited('\'', take_until(1.., "'"), '\'').parse_next(input)
+}
+
+fn parse_arg_no_quote<'i>(input: ParseInput<'_, 'i>) -> ModalResult<&'i str> {
+    alt((take_till(1.., |c: char| " \t\'".contains(c)), rest)).parse_next(input)
+}
+
+fn parse_arg_double_quote(input: ParseInput) -> ModalResult<String> {
+    delimited('"', parse_arg_double_quote_escape, '"').parse_next(input)
+}
+
+fn parse_arg_double_quote_escape(input: ParseInput) -> ModalResult<String> {
+    let mut arg = String::new();
+    loop {
+        let next = take_till(0.., |c: char| "\"\\".contains(c)).parse_next(input)?;
+        arg.push_str(next);
+
+        if let Some(b'"') = input.as_bytes().first() {
+            break Ok(arg);
+        }
+
+        match take(2usize).parse_next(input)? {
+            "\\$" => arg.push('$'),
+            "\\`" => arg.push('`'),
+            "\\\"" => arg.push('"'),
+            "\\\\" => arg.push('\\'),
+            "\\\n" => todo!(),
+            c => arg.push_str(c),
+        }
     }
 }
 
@@ -102,6 +134,31 @@ mod test {
         assert_eq!(parse_arg(&mut "'hello world'").unwrap(), "hello world");
         assert_eq!(parse_arg(&mut "'hello' world").unwrap(), "hello");
         assert_eq!(parse_arg(&mut "hello'world'").unwrap(), "helloworld");
+
+        assert_eq!(parse_arg(&mut "\"hello world\"").unwrap(), "hello world");
+        assert_eq!(parse_arg(&mut "\"hello\" world\"").unwrap(), "hello");
+        assert_eq!(
+            parse_arg(&mut "\"hello\\\" world\"").unwrap(),
+            "hello\" world"
+        );
+        assert_eq!(
+            parse_arg(&mut "\"hello\\$ world\"").unwrap(),
+            "hello$ world"
+        );
+        assert_eq!(
+            parse_arg(&mut "\"hello\\` world\"").unwrap(),
+            "hello` world"
+        );
+        // assert_eq!(
+        //     parse_arg(&mut "\"hello\\\n world\"").unwrap(),
+        //     "hello\n world"
+        // );
+        assert_eq!(
+            parse_arg(&mut "\"hello\\x world\"").unwrap(),
+            "hello\\x world"
+        );
+        assert_eq!(parse_arg(&mut "\"hello\\$\"").unwrap(), "hello$");
+
         assert!(parse_arg(&mut " ").is_err())
     }
 

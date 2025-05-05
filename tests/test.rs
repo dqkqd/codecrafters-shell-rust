@@ -335,3 +335,23 @@ $ world     example testscript
 $ "#,
         );
 }
+
+#[test]
+fn double_quote() {
+    Command::cargo_bin("codecrafters-shell")
+        .unwrap()
+        .write_stdin(
+            r#"echo "shell hello"
+echo "world\$     test"
+echo "hello\" world"
+"#,
+        )
+        .assert()
+        .success()
+        .stdout(
+            r#"$ shell hello
+$ world$     test
+$ hello" world
+$ "#,
+        );
+}
