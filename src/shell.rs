@@ -1,54 +1,75 @@
 use anyhow::Result;
-use std::io::{self, Write};
+use crossterm::{
+    cursor::MoveLeft,
+    event::{read, Event, KeyCode, KeyModifiers},
+    execute,
+    style::Print,
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
+use std::io;
 
-use crate::command::Command;
+use crate::parse::StreamCommandParser;
 
-#[derive(Debug)]
-pub struct Shell {
-    stdout: io::Stdout,
+fn execute_command(parser: StreamCommandParser) -> Result<()> {
+    if !parser.is_empty() {
+        let mut command = parser.finish()?;
+        command.execute()?;
+    }
+    Ok(())
 }
 
-impl Default for Shell {
-    fn default() -> Self {
-        Self {
-            stdout: io::stdout(),
-        }
-    }
-}
+pub fn run_shell() -> Result<()> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
 
-impl Shell {
-    pub fn new() -> Shell {
-        Shell::default()
-    }
+    'session: loop {
+        // first write dollar sign
+        execute!(stdout, Print("$ "))?;
 
-    pub fn run(&mut self, input: io::Stdin) -> Result<()> {
-        loop {
-            // first write dollar sign
-            self.prompt()?;
+        let mut parser = StreamCommandParser::new();
 
-            // read user input
-            let mut raw_input = String::new();
-            match input.read_line(&mut raw_input)? {
-                0 => break Ok(()),
-                _ => {
-                    let mut raw_input = raw_input.trim();
-                    if raw_input.is_empty() {
-                        continue;
+        'command: loop {
+            match read()? {
+                Event::Key(key) => {
+                    match (key.modifiers, key.code) {
+                        // stop
+                        (KeyModifiers::CONTROL, KeyCode::Char('c')) => break 'session,
+                        (KeyModifiers::CONTROL, KeyCode::Char('d')) => break 'session,
+                        (KeyModifiers::CONTROL, KeyCode::Char('z')) => break 'session,
+                        // execute
+                        (KeyModifiers::CONTROL, KeyCode::Char('j')) | (_, KeyCode::Enter) => {
+                            execute!(stdout, Print("\r\n"),)?;
+                            execute_command(parser)?;
+                            break 'command;
+                        }
+                        _ => {}
                     }
-                    let mut command = Command::parse(&mut raw_input)?;
-                    command.execute()?;
+
+                    match key.code {
+                        KeyCode::Backspace => {
+                            parser.pop();
+                            execute!(stdout, MoveLeft(1), Print(" "), MoveLeft(1))?;
+                        }
+                        KeyCode::Char(c) => {
+                            parser.push(c);
+                            execute!(stdout, Print(c))?;
+                        }
+                        KeyCode::Tab => todo!(),
+                        k => {
+                            eprintln!("unimplemented keycode={:?}", k);
+                            break 'session;
+                        }
+                    }
+                }
+                e => {
+                    eprintln!("unimplemented event={:?}", e);
+                    break 'session;
                 }
             }
         }
     }
 
-    fn prompt(&mut self) -> Result<()> {
-        self.write_and_flush("$ ")
-    }
+    disable_raw_mode()?;
 
-    fn write_and_flush(&mut self, data: &str) -> Result<()> {
-        self.stdout.write_all(data.as_bytes())?;
-        self.stdout.flush()?;
-        Ok(())
-    }
+    Ok(())
 }

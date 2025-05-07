@@ -63,8 +63,16 @@ impl POut {
     }
 }
 
-fn write_all_and_flush<W: Write>(w: &mut W, data: &[u8]) -> anyhow::Result<()> {
-    w.write_all(data)?;
+fn write_all_and_flush<W: Write>(w: &mut W, raw: &[u8]) -> anyhow::Result<()> {
+    // replace '\n' in data to '\r\n'
+    let mut data = Vec::new();
+    for b in raw {
+        if b == &b'\n' && data.last() != Some(&b'\r') {
+            data.push(b'\r');
+        }
+        data.push(*b);
+    }
+    w.write_all(&data)?;
     w.flush()?;
     Ok(())
 }

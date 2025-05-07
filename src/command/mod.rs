@@ -1,29 +1,27 @@
 use std::path::PathBuf;
 
+use crate::io::{PErr, PIn, POut};
 use execute::Execute;
-use io::{PErr, PIn, POut};
-use parse::{parse_command, ParseInput};
 use strum::EnumString;
 
 mod execute;
-mod io;
-mod parse;
 
-pub(crate) struct Command {
+#[derive(Debug)]
+pub(crate) struct PipedCommand {
     stdin: Vec<PIn>,
     stdout: Vec<POut>,
     stderr: Vec<PErr>,
-    inner: InternalCommand,
+    inner: Command,
 }
 
-impl Command {
-    fn new(
+impl PipedCommand {
+    pub fn new(
         stdin: Vec<PIn>,
         stdout: Vec<POut>,
         stderr: Vec<PErr>,
-        command: InternalCommand,
-    ) -> Command {
-        Command {
+        command: Command,
+    ) -> PipedCommand {
+        PipedCommand {
             stdin,
             stdout,
             stderr,
@@ -31,38 +29,34 @@ impl Command {
         }
     }
 
-    pub fn parse(input: ParseInput) -> anyhow::Result<Command> {
-        parse_command(input)
-    }
-
     pub fn execute(&mut self) -> anyhow::Result<()> {
         self.inner
-            .execute(self.stdin.as_mut(), &mut self.stdout, &mut self.stderr)?;
+            .execute(&mut self.stdin, &mut self.stdout, &mut self.stderr)?;
         Ok(())
     }
 }
 
 #[derive(Debug)]
-enum InternalCommand {
+pub(crate) enum Command {
     Builtin(BuiltinCommand),
     Invalid(InvalidCommand),
     Path(PathCommand),
 }
 
 #[derive(Debug, Default, PartialEq)]
-struct ProgramArgs(pub Vec<String>);
+pub(crate) struct ProgramArgs(pub Vec<String>);
 
 #[derive(Debug, Default, PartialEq)]
-struct InvalidCommand(pub String);
+pub(crate) struct InvalidCommand(pub String);
 
 #[derive(Debug, Default, PartialEq)]
-struct PathCommand {
+pub(crate) struct PathCommand {
     pub path: PathBuf,
     pub args: ProgramArgs,
 }
 
 #[derive(Debug, PartialEq, EnumString)]
-enum BuiltinCommand {
+pub(crate) enum BuiltinCommand {
     #[strum(serialize = "exit")]
     Exit(ProgramArgs),
     #[strum(serialize = "echo")]
@@ -76,7 +70,7 @@ enum BuiltinCommand {
 }
 
 impl BuiltinCommand {
-    fn with_args(self, args: ProgramArgs) -> BuiltinCommand {
+    pub fn with_args(self, args: ProgramArgs) -> BuiltinCommand {
         match self {
             BuiltinCommand::Exit(_) => BuiltinCommand::Exit(args),
             BuiltinCommand::Echo(_) => BuiltinCommand::Echo(args),

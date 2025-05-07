@@ -1,11 +1,11 @@
 use std::{env, str::FromStr};
 
-use super::{
-    io::{write_stderr, write_stdout, PErr, PIn, POut},
-    parse::path_lookup,
-    BuiltinCommand, InternalCommand, InvalidCommand, PathCommand, ProgramArgs,
-};
+use crate::parse::path_lookup;
+
+use crate::io::{write_stderr, write_stdout, PErr, PIn, POut};
 use anyhow::Context;
+
+use super::{BuiltinCommand, Command, InvalidCommand, PathCommand, ProgramArgs};
 
 pub(super) trait Execute {
     fn execute(
@@ -16,7 +16,7 @@ pub(super) trait Execute {
     ) -> anyhow::Result<()>;
 }
 
-impl Execute for InternalCommand {
+impl Execute for Command {
     fn execute(
         &mut self,
         stdin: &mut [PIn],
@@ -24,13 +24,9 @@ impl Execute for InternalCommand {
         stderr: &mut [PErr],
     ) -> anyhow::Result<()> {
         match self {
-            InternalCommand::Builtin(builtin_command) => {
-                builtin_command.execute(stdin, stdout, stderr)
-            }
-            InternalCommand::Invalid(invalid_command) => {
-                invalid_command.execute(stdin, stdout, stderr)
-            }
-            InternalCommand::Path(path_command) => path_command.execute(stdin, stdout, stderr),
+            Command::Builtin(builtin_command) => builtin_command.execute(stdin, stdout, stderr),
+            Command::Invalid(invalid_command) => invalid_command.execute(stdin, stdout, stderr),
+            Command::Path(path_command) => path_command.execute(stdin, stdout, stderr),
         }
     }
 }

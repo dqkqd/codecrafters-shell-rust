@@ -7,18 +7,18 @@ use winnow::{
     ModalResult, Parser,
 };
 
-use crate::command::io::{PErr, POut, PType};
+use crate::io::{PErr, POut, PType};
 
-use super::{command::command_arg, ParseInput, RedirectArg};
+use super::{command::command_token, RedirectToken, Stream};
 
-pub(super) fn redirect_arg(input: ParseInput) -> ModalResult<RedirectArg> {
-    alt((append_output, output)).parse_next(input)
+pub(super) fn redirect_token(stream: &mut Stream) -> ModalResult<RedirectToken> {
+    alt((append_output_stream, output_stream)).parse_next(stream)
 }
 
-impl RedirectArg {
+impl RedirectToken {
     pub(super) fn into_pipe(self) -> anyhow::Result<PType> {
         match self {
-            RedirectArg::Output { n, word } => {
+            RedirectToken::Output { n, word } => {
                 let file = OpenOptions::new()
                     .create(true)
                     .truncate(true)
@@ -31,7 +31,7 @@ impl RedirectArg {
                     _ => bail!("invalid file descriptor {n}"),
                 }
             }
-            RedirectArg::AppendOutput { n, word } => {
+            RedirectToken::AppendOutput { n, word } => {
                 let file = OpenOptions::new().create(true).append(true).open(word)?;
                 match n {
                     1 => Ok(PType::Out(POut::File(file))),
@@ -43,29 +43,29 @@ impl RedirectArg {
     }
 }
 
-fn output(input: ParseInput) -> ModalResult<RedirectArg> {
+fn output_stream(stream: &mut Stream) -> ModalResult<RedirectToken> {
     let (_, n, _, _, _, word) = (
         multispace0,
         opt(digit1).map(|s| s.map(|s: &str| s.parse::<i32>().unwrap()).unwrap_or(1)),
         ">",
         opt("|"),
         multispace0,
-        command_arg,
+        command_token,
     )
-        .parse_next(input)?;
-    Ok(RedirectArg::Output { n, word: word.0 })
+        .parse_next(stream)?;
+    Ok(RedirectToken::Output { n, word: word.0 })
 }
 
-fn append_output(input: ParseInput) -> ModalResult<RedirectArg> {
+fn append_output_stream(stream: &mut Stream) -> ModalResult<RedirectToken> {
     let (_, n, _, _, word) = (
         multispace0,
         opt(digit1).map(|s| s.map(|s: &str| s.parse::<i32>().unwrap()).unwrap_or(1)),
         ">>",
         multispace0,
-        command_arg,
+        command_token,
     )
-        .parse_next(input)?;
-    Ok(RedirectArg::AppendOutput { n, word: word.0 })
+        .parse_next(stream)?;
+    Ok(RedirectToken::AppendOutput { n, word: word.0 })
 }
 
 #[cfg(test)]
@@ -76,36 +76,36 @@ mod test {
     #[test]
     fn test_output() {
         assert_eq!(
-            redirect_arg(&mut ">word").unwrap(),
-            RedirectArg::Output {
+            redirect_token(&mut Stream::new(">word\n")).unwrap(),
+            RedirectToken::Output {
                 n: 1,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut "1>word").unwrap(),
-            RedirectArg::Output {
+            redirect_token(&mut Stream::new("1>word\n")).unwrap(),
+            RedirectToken::Output {
                 n: 1,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut "2>word").unwrap(),
-            RedirectArg::Output {
+            redirect_token(&mut Stream::new("2>word\n")).unwrap(),
+            RedirectToken::Output {
                 n: 2,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut ">|word").unwrap(),
-            RedirectArg::Output {
+            redirect_token(&mut Stream::new(">|word\n")).unwrap(),
+            RedirectToken::Output {
                 n: 1,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut "> word").unwrap(),
-            RedirectArg::Output {
+            redirect_token(&mut Stream::new("> word\n")).unwrap(),
+            RedirectToken::Output {
                 n: 1,
                 word: "word".into()
             }
@@ -115,29 +115,29 @@ mod test {
     #[test]
     fn test_append_output() {
         assert_eq!(
-            redirect_arg(&mut ">>word").unwrap(),
-            RedirectArg::AppendOutput {
+            redirect_token(&mut Stream::new(">>word\n")).unwrap(),
+            RedirectToken::AppendOutput {
                 n: 1,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut ">> word").unwrap(),
-            RedirectArg::AppendOutput {
+            redirect_token(&mut Stream::new(">> word\n")).unwrap(),
+            RedirectToken::AppendOutput {
                 n: 1,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut "1>>word").unwrap(),
-            RedirectArg::AppendOutput {
+            redirect_token(&mut Stream::new("1>>word\n")).unwrap(),
+            RedirectToken::AppendOutput {
                 n: 1,
                 word: "word".into()
             }
         );
         assert_eq!(
-            redirect_arg(&mut "2>>word").unwrap(),
-            RedirectArg::AppendOutput {
+            redirect_token(&mut Stream::new("2>>word\n")).unwrap(),
+            RedirectToken::AppendOutput {
                 n: 2,
                 word: "word".into()
             }

@@ -1,8 +1,6 @@
-use std::io::{self};
-
-use codecrafters_shell::Shell;
+use codecrafters_shell::run_shell;
 
 fn main() -> anyhow::Result<()> {
-    Shell::new().run(io::stdin())?;
+    run_shell()?;
     Ok(())
 }
