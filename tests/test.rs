@@ -1,6 +1,7 @@
+use anyhow::Result;
 use std::{
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use assert_cmd::Command;
@@ -507,4 +508,26 @@ cd: invalid_path: No such file or directory
 "#,
         TestOption::default(),
     )
+}
+
+fn run_test_complete(input: &str, expected: &str) -> Result<()> {
+    let command = Command::cargo_bin("codecrafters-shell")?;
+    let path = Path::new(command.get_program()).to_str().unwrap();
+    let mut p = rexpect::spawn(path, Some(50))?;
+
+    p.send(input)?;
+    p.flush()?;
+    p.exp_string(expected)?;
+
+    p.send_control('c')?;
+    p.exp_eof()?;
+    Ok(())
+}
+
+#[test]
+fn complete_builtin() -> Result<()> {
+    run_test_complete("ec\t", "echo ")?;
+    run_test_complete("ech\t", "echo ")?;
+    run_test_complete("exi\t", "exit ")?;
+    Ok(())
 }
