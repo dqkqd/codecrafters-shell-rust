@@ -551,3 +551,9 @@ fn complete_builtin_args() -> Result<()> {
     run_test_complete_exec("typ\techo", "echo is a shell builtin")?;
     Ok(())
 }
+
+#[test]
+fn complete_builtin_missing() -> Result<()> {
+    run_test_complete("haha\t", "\x07")?;
+    Ok(())
+}
