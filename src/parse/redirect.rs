@@ -12,7 +12,7 @@ use crate::io::{PErr, POut, PType};
 use super::{command::command_token, RedirectToken, Stream};
 
 pub(super) fn redirect_token(stream: &mut Stream) -> ModalResult<RedirectToken> {
-    alt((append_output_stream, output_stream)).parse_next(stream)
+    alt((append_output, output)).parse_next(stream)
 }
 
 impl RedirectToken {
@@ -43,7 +43,7 @@ impl RedirectToken {
     }
 }
 
-fn output_stream(stream: &mut Stream) -> ModalResult<RedirectToken> {
+fn output(stream: &mut Stream) -> ModalResult<RedirectToken> {
     let (_, n, _, _, _, word) = (
         multispace0,
         opt(digit1).map(|s| s.map(|s: &str| s.parse::<i32>().unwrap()).unwrap_or(1)),
@@ -56,7 +56,7 @@ fn output_stream(stream: &mut Stream) -> ModalResult<RedirectToken> {
     Ok(RedirectToken::Output { n, word: word.0 })
 }
 
-fn append_output_stream(stream: &mut Stream) -> ModalResult<RedirectToken> {
+fn append_output(stream: &mut Stream) -> ModalResult<RedirectToken> {
     let (_, n, _, _, word) = (
         multispace0,
         opt(digit1).map(|s| s.map(|s: &str| s.parse::<i32>().unwrap()).unwrap_or(1)),

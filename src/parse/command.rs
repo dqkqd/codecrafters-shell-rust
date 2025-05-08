@@ -12,7 +12,7 @@ pub(super) fn command_token(stream: &mut Stream) -> ModalResult<CommandToken> {
         multispace0,
         repeat(
             1..,
-            alt((single_quote_stream, double_quote_stream, no_quote_stream)),
+            alt((single_quote, double_quote, no_quote)),
         )
         .fold(String::new, |acc, item| acc + &item)
         .map(CommandToken),
@@ -20,14 +20,14 @@ pub(super) fn command_token(stream: &mut Stream) -> ModalResult<CommandToken> {
     .parse_next(stream)
 }
 
-fn single_quote_stream(stream: &mut Stream) -> ModalResult<String> {
+fn single_quote(stream: &mut Stream) -> ModalResult<String> {
     delimited('\'', take_until(1.., "'").map(String::from), '\'').parse_next(stream)
 }
 
-fn double_quote_stream(stream: &mut Stream) -> ModalResult<String> {
+fn double_quote(stream: &mut Stream) -> ModalResult<String> {
     delimited(
         '"',
-        repeat(0.., double_quote_inner_stream)
+        repeat(0.., double_quote_inner)
             .fold(String::new, |acc, item| acc + &item)
             .verify(|s: &str| !s.is_empty()),
         '"',
@@ -35,7 +35,7 @@ fn double_quote_stream(stream: &mut Stream) -> ModalResult<String> {
     .parse_next(stream)
 }
 
-fn double_quote_inner_stream(stream: &mut Stream) -> ModalResult<String> {
+fn double_quote_inner(stream: &mut Stream) -> ModalResult<String> {
     let token = take_till(0.., |c: char| "\"\\".contains(c)).map(String::from);
     let backslash = opt(alt(((preceded("\\", any)).map(|c| match c {
         '$' | '`' | '\"' | '\\' | '\n' => c.to_string(),
@@ -51,14 +51,14 @@ fn double_quote_inner_stream(stream: &mut Stream) -> ModalResult<String> {
         .parse_next(stream)
 }
 
-fn no_quote_stream(stream: &mut Stream) -> ModalResult<String> {
-    repeat(0.., no_quote_inner_stream)
+fn no_quote(stream: &mut Stream) -> ModalResult<String> {
+    repeat(0.., no_quote_inner)
         .fold(String::new, |acc, item| acc + &item)
         .verify(|s: &str| !s.is_empty())
         .parse_next(stream)
 }
 
-fn no_quote_inner_stream(stream: &mut Stream) -> ModalResult<String> {
+fn no_quote_inner(stream: &mut Stream) -> ModalResult<String> {
     let token = take_till(0.., |c: char| " \t\r\n\\\'\"".contains(c)).map(String::from);
     let backslash = opt(preceded("\\", any));
 
@@ -81,10 +81,10 @@ mod test {
     #[test]
     fn test_single_quote() {
         assert_eq!(
-            single_quote_stream.parse_next(&mut Stream::new("'hello'")),
+            single_quote.parse_next(&mut Stream::new("'hello'")),
             Ok("hello".to_string())
         );
-        assert!(single_quote_stream
+        assert!(single_quote
             .parse_next(&mut Stream::new("'hello"))
             .is_err());
     }
@@ -92,33 +92,33 @@ mod test {
     #[test]
     fn test_double_quote() {
         assert_eq!(
-            double_quote_stream.parse_next(&mut Stream::new("\"hello\"")),
+            double_quote.parse_next(&mut Stream::new("\"hello\"")),
             Ok("hello".to_string())
         );
         assert_eq!(
-            double_quote_stream.parse_next(&mut Stream::new("\"hello\\$\"")),
+            double_quote.parse_next(&mut Stream::new("\"hello\\$\"")),
             Ok("hello$".to_string())
         );
         assert_eq!(
-            double_quote_stream.parse_next(&mut Stream::new("\"hello\\`\"")),
+            double_quote.parse_next(&mut Stream::new("\"hello\\`\"")),
             Ok("hello`".to_string())
         );
         assert_eq!(
-            double_quote_stream.parse_next(&mut Stream::new("\"hello\\\"\"")),
+            double_quote.parse_next(&mut Stream::new("\"hello\\\"\"")),
             Ok("hello\"".to_string())
         );
         assert_eq!(
-            double_quote_stream.parse_next(&mut Stream::new("\"hello\\\\\"")),
+            double_quote.parse_next(&mut Stream::new("\"hello\\\\\"")),
             Ok("hello\\".to_string())
         );
         assert_eq!(
-            double_quote_stream.parse_next(&mut Stream::new("\"hello\\\n\"")),
+            double_quote.parse_next(&mut Stream::new("\"hello\\\n\"")),
             Ok("hello\n".to_string())
         );
-        assert!(double_quote_stream
+        assert!(double_quote
             .parse_next(&mut Stream::new("\"hello"))
             .is_err());
-        assert!(double_quote_stream
+        assert!(double_quote
             .parse_next(&mut Stream::new("\"hello\\"))
             .is_err(),);
     }
@@ -126,30 +126,30 @@ mod test {
     #[test]
     fn test_no_quote() {
         assert_eq!(
-            no_quote_stream.parse_next(&mut Stream::new("hello ")),
+            no_quote.parse_next(&mut Stream::new("hello ")),
             Ok("hello".to_string())
         );
         assert_eq!(
-            no_quote_stream.parse_next(&mut Stream::new("hello\t")),
+            no_quote.parse_next(&mut Stream::new("hello\t")),
             Ok("hello".to_string())
         );
         assert_eq!(
-            no_quote_stream.parse_next(&mut Stream::new("hello\r")),
+            no_quote.parse_next(&mut Stream::new("hello\r")),
             Ok("hello".to_string())
         );
         assert_eq!(
-            no_quote_stream.parse_next(&mut Stream::new("hello\n")),
+            no_quote.parse_next(&mut Stream::new("hello\n")),
             Ok("hello".to_string())
         );
         assert_eq!(
-            no_quote_stream.parse_next(&mut Stream::new("hello world")),
+            no_quote.parse_next(&mut Stream::new("hello world")),
             Ok("hello".to_string())
         );
         assert_eq!(
-            no_quote_stream.parse_next(&mut Stream::new("hello\\ world\n")),
+            no_quote.parse_next(&mut Stream::new("hello\\ world\n")),
             Ok("hello world".to_string())
         );
-        assert!(no_quote_stream
+        assert!(no_quote
             .parse_next(&mut Stream::new("hello"))
             .is_err(),);
     }
