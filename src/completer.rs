@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use rustyline::{
-    completion::{Completer, Pair},
+    completion::{Candidate, Completer},
     highlight::Highlighter,
     Completer, Context, Helper, Hinter, Validator,
 };
@@ -17,9 +17,33 @@ pub(crate) struct ShellHelper {
 
 impl Highlighter for ShellHelper {}
 
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CompleteCandidate {
+    pub display: String,
+    pub replacement: String,
+}
+impl CompleteCandidate {
+    fn new(s: &str) -> CompleteCandidate {
+        CompleteCandidate {
+            display: s.to_string(),
+            replacement: s.to_string() + " ",
+        }
+    }
+}
+
+impl Candidate for CompleteCandidate {
+    fn display(&self) -> &str {
+        self.display.as_str()
+    }
+
+    fn replacement(&self) -> &str {
+        self.replacement.as_str()
+    }
+}
+
 pub(crate) struct ShellCompleter {}
 impl Completer for ShellCompleter {
-    type Candidate = Pair;
+    type Candidate = CompleteCandidate;
 
     fn complete(
         &self,
@@ -44,23 +68,24 @@ impl Completer for ShellCompleter {
             return Ok((0, vec![]));
         }
 
-        let mut pairs = vec![];
-        pairs.extend_from_slice(&complete_builtin(&line[start..]));
-        pairs.extend_from_slice(&complete_path(&line[start..]));
+        let pairs: HashSet<CompleteCandidate> = HashSet::from_iter(
+            complete_builtin(word)
+                .into_iter()
+                .chain(complete_path(word)),
+        );
+        let mut pairs: Vec<CompleteCandidate> = pairs.into_iter().collect();
+        pairs.sort();
 
         Ok((start, pairs))
     }
 }
 
-fn complete_builtin(word: &str) -> Vec<Pair> {
+fn complete_builtin(word: &str) -> Vec<CompleteCandidate> {
     BuiltinCommand::iter()
         .filter_map(|command| {
             let command = command.as_ref();
             if command.starts_with(word) {
-                Some(Pair {
-                    display: command.into(),
-                    replacement: command.to_string() + " ",
-                })
+                Some(CompleteCandidate::new(command))
             } else {
                 None
             }
@@ -68,7 +93,7 @@ fn complete_builtin(word: &str) -> Vec<Pair> {
         .collect()
 }
 
-fn complete_path(word: &str) -> Vec<Pair> {
+fn complete_path(word: &str) -> Vec<CompleteCandidate> {
     match std::env::var("PATH") {
         Ok(path) => path
             .split(":")
@@ -87,10 +112,7 @@ fn complete_path(word: &str) -> Vec<Pair> {
                 p.file_name()
                     .and_then(|f| f.to_str())
                     .map(|s| s.to_string())
-            })
-            .map(|executable| Pair {
-                display: executable.clone(),
-                replacement: executable + " ",
+                    .map(|s| CompleteCandidate::new(&s))
             })
             .collect(),
         Err(_) => vec![],
