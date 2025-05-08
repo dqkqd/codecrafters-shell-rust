@@ -1,8 +1,7 @@
 use std::io;
-use std::path::PathBuf;
 use std::str::FromStr;
 
-use anyhow::{bail, Context};
+use anyhow::bail;
 use command::command_token;
 use redirect::redirect_token;
 use winnow::{
@@ -11,10 +10,11 @@ use winnow::{
     ModalResult, Parser, Partial,
 };
 
-use crate::command::{
-    BuiltinCommand, Command, InvalidCommand, PathCommand, PipedCommand, ProgramArgs,
-};
 use crate::io::{PErr, PIn, POut, PType};
+use crate::{
+    command::{BuiltinCommand, Command, InvalidCommand, PathCommand, PipedCommand, ProgramArgs},
+    utils::path_lookup_exact,
+};
 
 mod command;
 mod redirect;
@@ -115,7 +115,7 @@ impl StreamCommandParser {
         let args = ProgramArgs(command_args.into_iter().map(|v| v.0).collect());
         let command = match BuiltinCommand::from_str(&cmd.0) {
             Ok(builtin) => Command::Builtin(builtin.with_args(args)),
-            Err(_) => match path_lookup(&cmd.0) {
+            Err(_) => match path_lookup_exact(&cmd.0) {
                 Ok(path) => Command::Path(PathCommand { path, args }),
                 Err(_) => Command::Invalid(InvalidCommand(cmd.0)),
             },
@@ -153,16 +153,6 @@ impl StreamCommandParser {
             }
         }
     }
-}
-
-pub(crate) fn path_lookup(name: &str) -> anyhow::Result<PathBuf> {
-    let paths = std::env::var("PATH")?;
-    let path = paths
-        .split(":")
-        .map(|path| PathBuf::from(path).join(name))
-        .find(|path| path.is_file())
-        .with_context(|| format!("missing executable file command, {name}"))?;
-    Ok(path)
 }
 
 fn token(stream: &mut Stream) -> ModalResult<Token> {

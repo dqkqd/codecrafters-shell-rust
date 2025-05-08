@@ -557,3 +557,9 @@ fn complete_builtin_missing() -> Result<()> {
     run_test_complete("haha\t", "\x07")?;
     Ok(())
 }
+
+#[test]
+fn complete_path() -> Result<()> {
+    run_test_complete("cargo-fm\t", "cargo-fmt ")?;
+    Ok(())
+}

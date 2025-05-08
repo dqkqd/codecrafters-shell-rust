@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use rustyline::{
     completion::{Completer, Pair},
     highlight::Highlighter,
@@ -42,8 +44,11 @@ impl Completer for ShellCompleter {
             return Ok((0, vec![]));
         }
 
-        let builtin_pairs = complete_builtin(&line[start..]);
-        Ok((start, builtin_pairs))
+        let mut pairs = vec![];
+        pairs.extend_from_slice(&complete_builtin(&line[start..]));
+        pairs.extend_from_slice(&complete_path(&line[start..]));
+
+        Ok((start, pairs))
     }
 }
 
@@ -61,4 +66,33 @@ fn complete_builtin(word: &str) -> Vec<Pair> {
             }
         })
         .collect()
+}
+
+fn complete_path(word: &str) -> Vec<Pair> {
+    match std::env::var("PATH") {
+        Ok(path) => path
+            .split(":")
+            // construct absolute path
+            .map(|p| format!("{}/{}*", p, word))
+            // only find path that exists
+            .filter_map(|pattern| glob::glob(&pattern).ok())
+            // convert entries to path
+            .flat_map(|entries| {
+                let entries: Vec<PathBuf> =
+                    entries.into_iter().filter_map(|entry| entry.ok()).collect();
+                entries
+            })
+            // only use file name as executable file
+            .filter_map(|p| {
+                p.file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|s| s.to_string())
+            })
+            .map(|executable| Pair {
+                display: executable.clone(),
+                replacement: executable + " ",
+            })
+            .collect(),
+        Err(_) => vec![],
+    }
 }

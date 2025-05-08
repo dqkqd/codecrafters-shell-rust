@@ -1,8 +1,9 @@
 use std::{env, str::FromStr};
 
-use crate::parse::path_lookup;
-
-use crate::io::{write_stderr, write_stdout, PErr, PIn, POut};
+use crate::{
+    io::{write_stderr, write_stdout, PErr, PIn, POut},
+    utils::path_lookup_exact,
+};
 use anyhow::Context;
 
 use super::{BuiltinCommand, Command, InvalidCommand, PathCommand, ProgramArgs};
@@ -120,7 +121,7 @@ fn type_command(args: &mut ProgramArgs, stdout: &mut [POut]) -> anyhow::Result<(
     for arg in &args.0 {
         match BuiltinCommand::from_str(arg) {
             Ok(_) => write_stdout(stdout, format!("{arg} is a shell builtin\n").as_bytes())?,
-            Err(_) => match path_lookup(arg) {
+            Err(_) => match path_lookup_exact(arg) {
                 Ok(path) => write_stdout(
                     stdout,
                     format!("{arg} is {}\n", path.as_path().display()).as_bytes(),
