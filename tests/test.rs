@@ -53,6 +53,34 @@ fn run_test(input: &str, expected: &str, opt: TestOption) {
     }
 }
 
+fn run_test_complete(input: &str, expected: &str) -> Result<()> {
+    let command = Command::cargo_bin("codecrafters-shell")?;
+    let path = Path::new(command.get_program()).to_str().unwrap();
+    let mut p = rexpect::spawn(path, Some(50))?;
+
+    p.send(input)?;
+    p.flush()?;
+    p.exp_string(expected)?;
+
+    p.send_control('c')?;
+    p.exp_eof()?;
+    Ok(())
+}
+
+fn run_test_complete_exec(input: &str, expected: &str) -> Result<()> {
+    let command = Command::cargo_bin("codecrafters-shell")?;
+    let path = Path::new(command.get_program()).to_str().unwrap();
+    let mut p = rexpect::spawn(path, Some(50))?;
+
+    p.send_line(input)?;
+    p.flush()?;
+    p.exp_string(expected)?;
+
+    p.send_control('c')?;
+    p.exp_eof()?;
+    Ok(())
+}
+
 #[test]
 fn handle_invalid_commands() {
     run_test(
@@ -510,24 +538,16 @@ cd: invalid_path: No such file or directory
     )
 }
 
-fn run_test_complete(input: &str, expected: &str) -> Result<()> {
-    let command = Command::cargo_bin("codecrafters-shell")?;
-    let path = Path::new(command.get_program()).to_str().unwrap();
-    let mut p = rexpect::spawn(path, Some(50))?;
-
-    p.send(input)?;
-    p.flush()?;
-    p.exp_string(expected)?;
-
-    p.send_control('c')?;
-    p.exp_eof()?;
-    Ok(())
-}
-
 #[test]
 fn complete_builtin() -> Result<()> {
     run_test_complete("ec\t", "echo ")?;
     run_test_complete("ech\t", "echo ")?;
     run_test_complete("exi\t", "exit ")?;
+    Ok(())
+}
+
+#[test]
+fn complete_builtin_args() -> Result<()> {
+    run_test_complete_exec("typ\techo", "echo is a shell builtin")?;
     Ok(())
 }
