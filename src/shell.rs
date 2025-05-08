@@ -21,8 +21,7 @@ pub fn run_shell() -> Result<()> {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str())?;
-                let mut parser = StreamCommandParser::new();
-                parser.push(&line);
+                let parser = StreamCommandParser::new(&line);
                 if !parser.is_empty() {
                     let mut command = parser.finish()?;
                     command.execute()?;

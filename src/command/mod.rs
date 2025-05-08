@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::io::{PErr, PIn, POut};
 use execute::Execute;
-use strum::EnumString;
+use strum::{AsRefStr, EnumIter, EnumString};
 
 mod execute;
 
@@ -55,7 +55,7 @@ pub(crate) struct PathCommand {
     pub args: ProgramArgs,
 }
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, EnumString, EnumIter, AsRefStr)]
 pub(crate) enum BuiltinCommand {
     #[strum(serialize = "exit")]
     Exit(ProgramArgs),

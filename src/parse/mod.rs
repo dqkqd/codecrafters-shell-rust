@@ -37,33 +37,38 @@ enum RedirectToken {
 
 pub(crate) type Stream<'i> = Partial<&'i str>;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct StreamCommandParser {
-    raw_input: String,
+    remaining: String,
     parsed: Vec<(String, Token)>,
 }
 
 impl StreamCommandParser {
-    pub fn new() -> StreamCommandParser {
-        StreamCommandParser::default()
+    pub fn new(line: &str) -> StreamCommandParser {
+        let mut p = StreamCommandParser {
+            remaining: line.to_string(),
+            parsed: vec![],
+        };
+        p.parse();
+        p
     }
 
     pub fn push(&mut self, s: &str) {
-        self.raw_input.push_str(s);
+        self.remaining.push_str(s);
         self.parse();
     }
 
     pub fn is_empty(&self) -> bool {
-        self.parsed.is_empty() && self.raw_input.trim().is_empty()
+        self.parsed.is_empty() && self.remaining.trim().is_empty()
     }
 
     pub fn finish(mut self) -> anyhow::Result<PipedCommand> {
         self.push("\n");
 
-        let raw_input = self.raw_input();
+        let raw_input = self.input();
 
         // invalid
-        if !self.raw_input.trim().is_empty() {
+        if !self.remaining.trim().is_empty() {
             bail!("invalid command {}", &raw_input)
         }
 
@@ -119,25 +124,29 @@ impl StreamCommandParser {
         Ok(PipedCommand::new(stdin, stdout, stderr, command))
     }
 
-    fn raw_input(&self) -> String {
+    pub fn remaining(&self) -> &str {
+        &self.remaining
+    }
+
+    fn input(&self) -> String {
         let mut input = String::new();
         for (p, _) in &self.parsed {
             input += p;
         }
-        input += &self.raw_input;
+        input += self.remaining();
         input
     }
 
     fn parse(&mut self) {
         loop {
-            let mut stream = Stream::new(&self.raw_input);
+            let mut stream = Stream::new(&self.remaining);
             let start = stream.checkpoint();
             match token.parse_next(&mut stream) {
                 Ok(tok) => {
                     let end = stream.offset_from(&start);
 
-                    let mut parsed_input = self.raw_input.split_off(end);
-                    std::mem::swap(&mut self.raw_input, &mut parsed_input);
+                    let mut parsed_input = self.remaining.split_off(end);
+                    std::mem::swap(&mut self.remaining, &mut parsed_input);
                     self.parsed.push((parsed_input, tok));
                 }
                 Err(_) => break,
@@ -170,10 +179,7 @@ mod test {
     use super::*;
 
     fn parser(command: &str) -> StreamCommandParser {
-        let mut p = StreamCommandParser::default();
-        p.push(command);
-        p.push("\n");
-        p
+        StreamCommandParser::new(&format!("{command}\n"))
     }
 
     #[test]
