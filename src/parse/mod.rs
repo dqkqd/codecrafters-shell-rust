@@ -37,7 +37,7 @@ enum RedirectToken {
 
 pub(crate) type Stream<'i> = Partial<&'i str>;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct StreamCommandParser {
     raw_input: String,
     parsed: Vec<(String, Token)>,
@@ -48,20 +48,9 @@ impl StreamCommandParser {
         StreamCommandParser::default()
     }
 
-    pub fn push(&mut self, c: char) {
-        self.raw_input.push(c);
+    pub fn push(&mut self, s: &str) {
+        self.raw_input.push_str(s);
         self.parse();
-    }
-
-    pub fn pop(&mut self) {
-        match (self.raw_input.pop(), self.parsed.is_empty()) {
-            (Some(_), _) => {}
-            (None, true) => {}
-            (None, false) => {
-                let (input, _) = self.parsed.pop().unwrap();
-                self.raw_input = input;
-            }
-        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -69,7 +58,7 @@ impl StreamCommandParser {
     }
 
     pub fn finish(mut self) -> anyhow::Result<PipedCommand> {
-        self.push('\n');
+        self.push("\n");
 
         let raw_input = self.raw_input();
 
@@ -182,11 +171,8 @@ mod test {
 
     fn parser(command: &str) -> StreamCommandParser {
         let mut p = StreamCommandParser::default();
-        for c in command.chars() {
-            p.push(c);
-        }
-        p.push('\n');
-        p.parse();
+        p.push(command);
+        p.push("\n");
         p
     }
 
@@ -329,22 +315,5 @@ mod test {
                 )
             ],
         );
-    }
-    #[test]
-    fn test_command_parser_pop() {
-        let command = "echo hello world";
-        let mut p = StreamCommandParser::default();
-        for c in command.chars() {
-            p.push(c);
-        }
-        p.push('\n');
-
-        assert_eq!(&p.raw_input, "\n");
-        p.pop();
-        assert_eq!(&p.raw_input, "");
-        p.pop();
-        assert_eq!(&p.raw_input, " world");
-        p.pop();
-        assert_eq!(&p.raw_input, " worl");
     }
 }

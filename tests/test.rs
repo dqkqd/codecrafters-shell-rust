@@ -1,111 +1,83 @@
 use std::{
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
-use anyhow::Result;
 use assert_cmd::Command;
-use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
 
-procspawn::enable_test_support!();
-
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 struct TestOption {
     env: Option<(String, String)>,
     current_dir: Option<PathBuf>,
+    err: bool,
 }
 
-fn run_test(input: &str, expected: &str, opt: TestOption) -> Result<()> {
-    let mut input = input.trim_start();
-    if input.ends_with('\n') {
-        input = &input[..input.len() - 1]
+impl TestOption {
+    fn env(mut self, k: &str, v: &str) -> TestOption {
+        self.env = Some((k.into(), v.into()));
+        self
     }
+    fn current_dir(mut self, dir: PathBuf) -> TestOption {
+        self.current_dir = Some(dir);
+        self
+    }
+    fn no_path() -> TestOption {
+        TestOption::default().env("PATH", "")
+    }
+    fn err(mut self) -> TestOption {
+        self.err = true;
+        self
+    }
+}
+
+fn run_test(input: &str, expected: &str, opt: TestOption) {
     let input = input.to_string();
+    let expected = expected.trim().to_string() + "\n";
 
-    let expected = expected.trim_start().replace("\n", "\r\n").to_string();
+    let mut command = &mut Command::cargo_bin("codecrafters-shell").unwrap();
 
-    let output = procspawn::spawn((input, expected, opt), |(input, expected, opt)| {
-        if let Some((k, v)) = opt.env {
-            std::env::set_var(k, v);
-        }
-        if let Some(dir) = opt.current_dir {
-            std::env::set_current_dir(dir).unwrap();
-        }
-        run_test_internal(&input, &expected).unwrap();
-    });
-    output.join()?;
-    Ok(())
-}
+    if let Some((k, v)) = opt.env {
+        command = command.env(k, v);
+    }
+    if let Some(dir) = &opt.current_dir {
+        command = command.current_dir(dir);
+    }
+    let assert = command.write_stdin(input).assert().success();
 
-fn run_test_internal(input: &str, expected: &str) -> Result<()> {
-    let command = Command::cargo_bin("codecrafters-shell")?;
-    let path = Path::new(command.get_program()).to_str().unwrap();
-    let mut p = rexpect::spawn(path, Some(50))?;
-
-    p.send_line(input)?;
-    p.exp_string(expected)?;
-
-    p.send_control('c')?;
-    p.exp_eof()?;
-    Ok(())
+    if opt.err {
+        assert.stderr(expected);
+    } else {
+        assert.stdout(expected);
+    }
 }
 
 #[test]
-fn print_a_prompt() -> Result<()> {
-    run_test("", "$ ", TestOption::default())
-}
-
-#[test]
-fn handle_invalid_commands() -> Result<()> {
+fn handle_invalid_commands() {
     run_test(
         "some_command",
-        r#"
-$ some_command
-some_command: command not found
-$ "#,
+        "some_command: command not found",
         TestOption::default(),
-    )
+    );
 }
 
 #[test]
-fn repl() -> Result<()> {
+fn repl() {
     run_test(
         r#"
 command1
 command2
 "#,
         r#"
-$ command1
 command1: command not found
-$ command2
 command2: command not found
-$ "#,
-        TestOption::default(),
-    )
-}
-
-#[test]
-fn repl_empty() -> Result<()> {
-    run_test(
-        r#"
-command1
-
-command2
 "#,
-        r#"
-$ command1
-command1: command not found
-$ 
-$ command2
-command2: command not found
-$ "#,
         TestOption::default(),
     )
 }
 
 #[test]
-fn exit() -> Result<()> {
+fn exit() {
     run_test(
         r#"
 command1
@@ -113,58 +85,34 @@ exit 0
 command2
 "#,
         r#"
-$ command1
 command1: command not found
-$ "#,
-        // remove `exit` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
-    )
-}
-
-#[test]
-fn echo_one() -> Result<()> {
-    run_test(
-        r#"
-echo 123
 "#,
-        r#"
-$ echo 123
-123
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn echo_many() -> Result<()> {
+fn echo_one() {
+    run_test("echo 123", "123", TestOption::no_path())
+}
+
+#[test]
+fn echo_many() {
     run_test(
         r#"
 echo 1 2 3
 echo 4  5   6
 "#,
         r#"
-$ echo 1 2 3
 1 2 3
-$ echo 4  5   6
 4 5 6
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn type_one() -> Result<()> {
+fn type_one() {
     run_test(
         r#"
 type echo
@@ -173,72 +121,46 @@ type type
 type invalid_command
 "#,
         r#"
-$ type echo
 echo is a shell builtin
-$ type exit
 exit is a shell builtin
-$ type type
 type is a shell builtin
-$ type invalid_command
 invalid_command: not found
-$ "#,
-        // remove `type` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn type_many() -> Result<()> {
+fn type_many() {
     run_test(
         r#"
 type echo exit type invalid_command
 "#,
         r#"
-$ type echo exit type invalid_command
 echo is a shell builtin
 exit is a shell builtin
 type is a shell builtin
 invalid_command: not found
-$ "#,
-        // remove `type` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn type_path() -> Result<()> {
+fn type_path() {
     let tmp_dir = tempdir().unwrap();
     let executable_path = tmp_dir.path().join("my_executable");
     File::create(&executable_path).unwrap();
 
     run_test(
-        r#"
-type my_executable
-"#,
-        &format!(
-            r#"
-$ type my_executable
-my_executable is {}
-$ "#,
-            executable_path.display()
-        ),
-        // remove `type` builtin from PATH
-        // add executable path to PATH
-        TestOption {
-            env: Some(("PATH".into(), tmp_dir.path().to_str().unwrap().into())),
-            current_dir: None,
-        },
+        "type my_executable",
+        &format!("my_executable is {}", executable_path.display()),
+        TestOption::default().env("PATH", tmp_dir.path().to_str().unwrap()),
     )
 }
 
 #[test]
-fn path_exec() -> Result<()> {
+fn path_exec() {
     let tmp_dir = tempdir().unwrap();
     File::create(tmp_dir.path().join("file1")).unwrap();
     File::create(tmp_dir.path().join("file2")).unwrap();
@@ -246,42 +168,28 @@ fn path_exec() -> Result<()> {
 
     run_test(
         &format!("ls {}", tmp_dir.path().display()),
-        &format!(
-            r#"
-$ ls {}
+        r#"
 file1
 file2
 file3
-$ "#,
-            tmp_dir.path().display()
-        ),
+"#,
         TestOption::default(),
     )
 }
 
 #[test]
-fn pwd() -> Result<()> {
+fn pwd() {
     let tmp_dir = tempdir().unwrap();
 
     run_test(
         "pwd",
-        &format!(
-            r#"
-$ pwd
-{}
-$ "#,
-            tmp_dir.path().display()
-        ),
-        // remove `pwd` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: Some(tmp_dir.path().to_path_buf()),
-        },
+        &format!("{}", tmp_dir.path().display()),
+        TestOption::no_path().current_dir(tmp_dir.into_path()),
     )
 }
 
 #[test]
-fn cd() -> Result<()> {
+fn cd() {
     let tmp_dir = tempdir().unwrap();
     let level2 = tmp_dir.path().join("level1").join("level2");
     fs::create_dir_all(&level2).unwrap();
@@ -299,28 +207,18 @@ pwd
         ),
         &format!(
             r#"
-$ cd {}
-$ pwd
 {}
-$ cd {}
-$ pwd
 {}
-$ "#,
+"#,
             tmp_dir.path().display(),
-            tmp_dir.path().display(),
-            level2.display(),
             level2.display(),
         ),
-        // remove `cd` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn cd_invalid_folder() -> Result<()> {
+fn cd_invalid_folder() {
     let tmp_dir = tempdir().unwrap();
     let level2_non_existed = tmp_dir.path().join("level1").join("level2");
 
@@ -333,22 +231,16 @@ cd {}
         ),
         &format!(
             r#"
-$ cd {}
 cd: {}: No such file or directory
-$ "#,
-            level2_non_existed.display(),
+"#,
             level2_non_existed.display(),
         ),
-        // remove `cd` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+        TestOption::no_path().err(),
     )
 }
 
 #[test]
-fn cd_relative() -> Result<()> {
+fn cd_relative() {
     let tmp_dir = tempdir().unwrap();
     let level1 = tmp_dir.path().join("level1");
     let level2 = level1.join("level2");
@@ -370,51 +262,36 @@ pwd
         ),
         &format!(
             r#"
-$ cd {}
-$ cd level1
-$ pwd
 {}
-$ cd ./level2
-$ pwd
 {}
-$ cd ../..
-$ pwd
 {}
-$ "#,
-            tmp_dir.path().display(),
+"#,
             level1.display(),
             level2.display(),
             tmp_dir.path().display()
         ),
-        // remove `cd` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn cd_tilde() -> Result<()> {
+fn cd_tilde() {
     run_test(
         r#"
 cd ~
 pwd
 "#,
-        r#"
-$ cd ~
-$ pwd
-/home/"#,
-        // remove `cd` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+        &format!(
+            "
+/home/{}",
+            std::env::var("USER").unwrap()
+        ),
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn single_quote() -> Result<()> {
+fn single_quote() {
     run_test(
         r#"
 echo 'shell hello'
@@ -422,23 +299,16 @@ echo 'world     test'
 echo 'world     example' 'test''script'
 "#,
         r#"
-$ echo 'shell hello'
 shell hello
-$ echo 'world     test'
 world     test
-$ echo 'world     example' 'test''script'
 world     example testscript
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn double_quote() -> Result<()> {
+fn double_quote() {
     run_test(
         r#"
 echo "shell hello"
@@ -446,86 +316,61 @@ echo "world\$     test"
 echo "hello\" world"
 "#,
         r#"
-$ echo "shell hello"
 shell hello
-$ echo "world\$     test"
 world$     test
-$ echo "hello\" world"
 hello" world
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn backslash_outside_quotes() -> Result<()> {
+fn backslash_outside_quotes() {
     run_test(
         r#"
 echo "before\   after"
 echo world\ \ \ \ \ \ script
 "#,
         r#"
-$ echo "before\   after"
 before\   after
-$ echo world\ \ \ \ \ \ script
 world      script
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn backslash_within_single_quotes() -> Result<()> {
+fn backslash_within_single_quotes() {
     run_test(
         r#"
 echo 'shell\\\nscript'
 echo 'example\"testhello\"shell'
 "#,
         r#"
-$ echo 'shell\\\nscript'
 shell\\\nscript
-$ echo 'example\"testhello\"shell'
 example\"testhello\"shell
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn backslash_within_double_quotes() -> Result<()> {
+fn backslash_within_double_quotes() {
     run_test(
         r#"
 echo "hello'script'\\n'world"
 echo "hello\"insidequotes"script\"
 "#,
         r#"
-$ echo "hello'script'\\n'world"
 hello'script'\n'world
-$ echo "hello\"insidequotes"script\"
 hello"insidequotesscript"
-$ "#,
-        // remove `echo` builtin from PATH
-        TestOption {
-            env: Some(("PATH".into(), "".into())),
-            current_dir: None,
-        },
+"#,
+        TestOption::no_path(),
     )
 }
 
 #[test]
-fn redirect_output_stdout() -> Result<()> {
+fn redirect_output_stdout() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
@@ -538,21 +383,13 @@ cat {}
             output.display(),
             output.display(),
         ),
-        &format!(
-            r#"
-$ echo > {} "hello world"
-$ cat {}
-hello world
-$ "#,
-            output.display(),
-            output.display(),
-        ),
+        "hello world",
         TestOption::default(),
     )
 }
 
 #[test]
-fn redirect_output_stdout_many() -> Result<()> {
+fn redirect_output_stdout_many() {
     let tmp_dir = tempdir().unwrap();
     let output1 = tmp_dir.path().join("output1");
     let output2 = tmp_dir.path().join("output2");
@@ -569,22 +406,16 @@ cat {}
             output1.display(),
             output2.display(),
         ),
-        &format!(
-            r#"
-$ cat {}
+        r#"
 hello world
-$ cat {}
 hello world
-$ "#,
-            output1.display(),
-            output2.display(),
-        ),
+ "#,
         TestOption::default(),
     )
 }
 
 #[test]
-fn redirect_output_stderr() -> Result<()> {
+fn redirect_output_stderr() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
@@ -597,21 +428,15 @@ cat {}
             output.display(),
             output.display(),
         ),
-        &format!(
-            r#"
-$ cd 2> {} invalid_path
-$ cat {}
+        r#"
 cd: invalid_path: No such file or directory
-$ "#,
-            output.display(),
-            output.display(),
-        ),
+"#,
         TestOption::default(),
     )
 }
 
 #[test]
-fn redirect_append_output_stdout() -> Result<()> {
+fn redirect_append_output_stdout() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
@@ -626,24 +451,16 @@ cat {}
             output.display(),
             output.display(),
         ),
-        &format!(
-            r#"
-$ echo > {} "hello"
-$ echo >> {} "world"
-$ cat {}
+        r#"
 hello
 world
-$ "#,
-            output.display(),
-            output.display(),
-            output.display(),
-        ),
+"#,
         TestOption::default(),
     )
 }
 
 #[test]
-fn redirect_append_output_stdout_many() -> Result<()> {
+fn redirect_append_output_stdout_many() {
     let tmp_dir = tempdir().unwrap();
     let output1 = tmp_dir.path().join("output1");
     let output2 = tmp_dir.path().join("output2");
@@ -660,32 +477,23 @@ cat {}
             output1.display(),
             output2.display(),
         ),
-        &format!(
-            r#"
-$ echo >> {} >> {} "hello world"
-$ cat {}
+        r#"
 hello world
-$ cat {}
 hello world
-$ "#,
-            output1.display(),
-            output2.display(),
-            output1.display(),
-            output2.display(),
-        ),
+"#,
         TestOption::default(),
     )
 }
 
 #[test]
-fn redirect_append_output_stderr() -> Result<()> {
+fn redirect_append_output_stderr() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
     run_test(
         &format!(
             r#"
-cd 1>> {} invalid_path
+echo >{} first
 cd 2>> {} invalid_path
 cat {}
 "#,
@@ -693,18 +501,10 @@ cat {}
             output.display(),
             output.display(),
         ),
-        &format!(
-            r#"
-$ cd 1>> {} invalid_path
+        r#"
+first
 cd: invalid_path: No such file or directory
-$ cd 2>> {} invalid_path
-$ cat {}
-cd: invalid_path: No such file or directory
-$ "#,
-            output.display(),
-            output.display(),
-            output.display(),
-        ),
+"#,
         TestOption::default(),
     )
 }

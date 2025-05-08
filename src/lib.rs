@@ -1,4 +1,5 @@
 mod command;
+mod completer;
 mod io;
 mod parse;
 mod shell;

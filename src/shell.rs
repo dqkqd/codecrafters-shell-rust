@@ -1,75 +1,45 @@
 use anyhow::Result;
-use crossterm::{
-    cursor::MoveLeft,
-    event::{read, Event, KeyCode, KeyModifiers},
-    execute,
-    style::Print,
-    terminal::{disable_raw_mode, enable_raw_mode},
+use rustyline::{error::ReadlineError, CompletionType, Config, Editor};
+
+use crate::{
+    completer::{ShellCompleter, ShellHelper},
+    parse::StreamCommandParser,
 };
-use std::io;
-
-use crate::parse::StreamCommandParser;
-
-fn execute_command(parser: StreamCommandParser) -> Result<()> {
-    if !parser.is_empty() {
-        let mut command = parser.finish()?;
-        command.execute()?;
-    }
-    Ok(())
-}
 
 pub fn run_shell() -> Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
+    let config = Config::builder()
+        .completion_type(CompletionType::List)
+        .build();
+    let mut rl = Editor::with_config(config)?;
+    let h = ShellHelper {
+        completer: ShellCompleter {},
+    };
+    rl.set_helper(Some(h));
 
-    'session: loop {
-        // first write dollar sign
-        execute!(stdout, Print("$ "))?;
-
-        let mut parser = StreamCommandParser::new();
-
-        'command: loop {
-            match read()? {
-                Event::Key(key) => {
-                    match (key.modifiers, key.code) {
-                        // stop
-                        (KeyModifiers::CONTROL, KeyCode::Char('c')) => break 'session,
-                        (KeyModifiers::CONTROL, KeyCode::Char('d')) => break 'session,
-                        (KeyModifiers::CONTROL, KeyCode::Char('z')) => break 'session,
-                        // execute
-                        (KeyModifiers::CONTROL, KeyCode::Char('j')) | (_, KeyCode::Enter) => {
-                            execute!(stdout, Print("\r\n"),)?;
-                            execute_command(parser)?;
-                            break 'command;
-                        }
-                        _ => {}
-                    }
-
-                    match key.code {
-                        KeyCode::Backspace => {
-                            parser.pop();
-                            execute!(stdout, MoveLeft(1), Print(" "), MoveLeft(1))?;
-                        }
-                        KeyCode::Char(c) => {
-                            parser.push(c);
-                            execute!(stdout, Print(c))?;
-                        }
-                        KeyCode::Tab => todo!(),
-                        k => {
-                            eprintln!("unimplemented keycode={:?}", k);
-                            break 'session;
-                        }
-                    }
+    loop {
+        let readline = rl.readline("$ ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str())?;
+                let mut parser = StreamCommandParser::new();
+                parser.push(&line);
+                if !parser.is_empty() {
+                    let mut command = parser.finish()?;
+                    command.execute()?;
                 }
-                e => {
-                    eprintln!("unimplemented event={:?}", e);
-                    break 'session;
-                }
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break;
+            }
+            Err(ReadlineError::Eof) => {
+                break;
+            }
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
             }
         }
     }
-
-    disable_raw_mode()?;
-
     Ok(())
 }
