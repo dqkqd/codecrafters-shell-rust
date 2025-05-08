@@ -1,5 +1,5 @@
 mod command;
-mod completer;
+mod complete;
 mod io;
 mod parse;
 mod shell;

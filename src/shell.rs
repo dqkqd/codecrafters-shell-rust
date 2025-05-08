@@ -2,7 +2,7 @@ use anyhow::Result;
 use rustyline::{error::ReadlineError, CompletionType, Config, Editor};
 
 use crate::{
-    completer::{ShellCompleter, ShellHelper},
+    complete::{ShellCompleter, ShellHelper},
     parse::StreamCommandParser,
 };
 
