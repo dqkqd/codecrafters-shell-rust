@@ -48,11 +48,9 @@ impl Completer for ShellCompleter {
     fn complete(
         &self,
         line: &str,
-        pos: usize,
+        _pos: usize,
         _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
-        let _ = (line, pos, _ctx);
-
         let parser = StreamCommandParser::new(line);
 
         let remaining = parser.remaining().trim_start();
