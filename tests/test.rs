@@ -570,3 +570,9 @@ fn complete_many() -> Result<()> {
     run_test_complete("exp\t\t", "expand  expiry  expr")?;
     Ok(())
 }
+
+#[test]
+fn complete_partial() -> Result<()> {
+    run_test_complete("car\t", "cargo")?;
+    Ok(())
+}
