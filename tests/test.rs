@@ -563,3 +563,10 @@ fn complete_path() -> Result<()> {
     run_test_complete("cargo-fm\t", "cargo-fmt ")?;
     Ok(())
 }
+
+#[test]
+fn complete_many() -> Result<()> {
+    run_test_complete("exp\t\t", "\x07")?;
+    run_test_complete("exp\t\t", "expand  expiry  expr")?;
+    Ok(())
+}
