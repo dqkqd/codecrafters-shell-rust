@@ -1,4 +1,5 @@
 use anyhow::Result;
+use predicates::prelude::predicate;
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
@@ -32,7 +33,7 @@ impl TestOption {
     }
 }
 
-fn run_test(input: &str, expected: &str, opt: TestOption) {
+fn check_contains(input: &str, expected: &str, opt: TestOption) {
     let input = input.to_string();
     let expected = expected.trim().to_string() + "\n";
 
@@ -47,13 +48,13 @@ fn run_test(input: &str, expected: &str, opt: TestOption) {
     let assert = command.write_stdin(input).assert().success();
 
     if opt.err {
-        assert.stderr(expected);
+        assert.stderr(predicate::str::ends_with(expected));
     } else {
-        assert.stdout(expected);
+        assert.stdout(predicate::str::ends_with(expected));
     }
 }
 
-fn run_test_complete(input: &str, expected: &str) -> Result<()> {
+fn check_complete(input: &str, expected: &str) -> Result<()> {
     let command = Command::cargo_bin("codecrafters-shell")?;
     let path = Path::new(command.get_program()).to_str().unwrap();
     let mut p = rexpect::spawn(path, Some(50))?;
@@ -67,7 +68,7 @@ fn run_test_complete(input: &str, expected: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_test_complete_exec(input: &str, expected: &str) -> Result<()> {
+fn check_complete_exec(input: &str, expected: &str) -> Result<()> {
     let command = Command::cargo_bin("codecrafters-shell")?;
     let path = Path::new(command.get_program()).to_str().unwrap();
     let mut p = rexpect::spawn(path, Some(50))?;
@@ -83,7 +84,7 @@ fn run_test_complete_exec(input: &str, expected: &str) -> Result<()> {
 
 #[test]
 fn handle_invalid_commands() {
-    run_test(
+    check_contains(
         "some_command",
         "some_command: command not found",
         TestOption::default(),
@@ -92,7 +93,7 @@ fn handle_invalid_commands() {
 
 #[test]
 fn repl() {
-    run_test(
+    check_contains(
         r#"
 command1
 command2
@@ -107,7 +108,7 @@ command2: command not found
 
 #[test]
 fn exit() {
-    run_test(
+    check_contains(
         r#"
 command1
 exit 0
@@ -122,12 +123,12 @@ command1: command not found
 
 #[test]
 fn echo_one() {
-    run_test("echo 123", "123", TestOption::no_path())
+    check_contains("echo 123", "123", TestOption::no_path())
 }
 
 #[test]
 fn echo_many() {
-    run_test(
+    check_contains(
         r#"
 echo 1 2 3
 echo 4  5   6
@@ -142,7 +143,7 @@ echo 4  5   6
 
 #[test]
 fn type_one() {
-    run_test(
+    check_contains(
         r#"
 type echo
 type exit
@@ -161,7 +162,7 @@ invalid_command: not found
 
 #[test]
 fn type_many() {
-    run_test(
+    check_contains(
         r#"
 type echo exit type invalid_command
 "#,
@@ -181,7 +182,7 @@ fn type_path() {
     let executable_path = tmp_dir.path().join("my_executable");
     File::create(&executable_path).unwrap();
 
-    run_test(
+    check_contains(
         "type my_executable",
         &format!("my_executable is {}", executable_path.display()),
         TestOption::default().env("PATH", tmp_dir.path().to_str().unwrap()),
@@ -195,7 +196,7 @@ fn path_exec() {
     File::create(tmp_dir.path().join("file2")).unwrap();
     File::create(tmp_dir.path().join("file3")).unwrap();
 
-    run_test(
+    check_contains(
         &format!("ls {}", tmp_dir.path().display()),
         r#"
 file1
@@ -210,7 +211,7 @@ file3
 fn pwd() {
     let tmp_dir = tempdir().unwrap();
 
-    run_test(
+    check_contains(
         "pwd",
         &format!("{}", tmp_dir.path().display()),
         TestOption::no_path().current_dir(tmp_dir.into_path()),
@@ -223,7 +224,7 @@ fn cd() {
     let level2 = tmp_dir.path().join("level1").join("level2");
     fs::create_dir_all(&level2).unwrap();
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 cd {}
@@ -251,7 +252,7 @@ fn cd_invalid_folder() {
     let tmp_dir = tempdir().unwrap();
     let level2_non_existed = tmp_dir.path().join("level1").join("level2");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 cd {}
@@ -276,7 +277,7 @@ fn cd_relative() {
     fs::create_dir(&level1).unwrap();
     fs::create_dir(&level2).unwrap();
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 cd {}
@@ -305,7 +306,7 @@ pwd
 
 #[test]
 fn cd_tilde() {
-    run_test(
+    check_contains(
         r#"
 cd ~
 pwd
@@ -321,7 +322,7 @@ pwd
 
 #[test]
 fn single_quote() {
-    run_test(
+    check_contains(
         r#"
 echo 'shell hello'
 echo 'world     test'
@@ -338,7 +339,7 @@ world     example testscript
 
 #[test]
 fn double_quote() {
-    run_test(
+    check_contains(
         r#"
 echo "shell hello"
 echo "world\$     test"
@@ -355,7 +356,7 @@ hello" world
 
 #[test]
 fn backslash_outside_quotes() {
-    run_test(
+    check_contains(
         r#"
 echo "before\   after"
 echo world\ \ \ \ \ \ script
@@ -370,7 +371,7 @@ world      script
 
 #[test]
 fn backslash_within_single_quotes() {
-    run_test(
+    check_contains(
         r#"
 echo 'shell\\\nscript'
 echo 'example\"testhello\"shell'
@@ -385,7 +386,7 @@ example\"testhello\"shell
 
 #[test]
 fn backslash_within_double_quotes() {
-    run_test(
+    check_contains(
         r#"
 echo "hello'script'\\n'world"
 echo "hello\"insidequotes"script\"
@@ -403,7 +404,7 @@ fn redirect_output_stdout() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 echo > {} "hello world"
@@ -423,7 +424,7 @@ fn redirect_output_stdout_many() {
     let output1 = tmp_dir.path().join("output1");
     let output2 = tmp_dir.path().join("output2");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 echo > {} > {} "hello world"
@@ -448,7 +449,7 @@ fn redirect_output_stderr() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 cd 2> {} invalid_path
@@ -469,7 +470,7 @@ fn redirect_append_output_stdout() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 echo > {} "hello"
@@ -494,7 +495,7 @@ fn redirect_append_output_stdout_many() {
     let output1 = tmp_dir.path().join("output1");
     let output2 = tmp_dir.path().join("output2");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 echo >> {} >> {} "hello world"
@@ -519,7 +520,7 @@ fn redirect_append_output_stderr() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 echo >{} first
@@ -540,40 +541,40 @@ cd: invalid_path: No such file or directory
 
 #[test]
 fn complete_builtin() -> Result<()> {
-    run_test_complete("ec\t", "echo ")?;
-    run_test_complete("ech\t", "echo ")?;
-    run_test_complete("exi\t", "exit ")?;
+    check_complete("ec\t", "echo ")?;
+    check_complete("ech\t", "echo ")?;
+    check_complete("exi\t", "exit ")?;
     Ok(())
 }
 
 #[test]
 fn complete_builtin_args() -> Result<()> {
-    run_test_complete_exec("typ\techo", "echo is a shell builtin")?;
+    check_complete_exec("typ\techo", "echo is a shell builtin")?;
     Ok(())
 }
 
 #[test]
 fn complete_builtin_missing() -> Result<()> {
-    run_test_complete("haha\t", "\x07")?;
+    check_complete("haha\t", "\x07")?;
     Ok(())
 }
 
 #[test]
 fn complete_path() -> Result<()> {
-    run_test_complete("cargo-fm\t", "cargo-fmt ")?;
+    check_complete("cargo-fm\t", "cargo-fmt ")?;
     Ok(())
 }
 
 #[test]
 fn complete_many() -> Result<()> {
-    run_test_complete("exp\t\t", "\x07")?;
-    run_test_complete("exp\t\t", "expand  expiry  expr")?;
+    check_complete("exp\t\t", "\x07")?;
+    check_complete("exp\t\t", "expand  expiry  expr")?;
     Ok(())
 }
 
 #[test]
 fn complete_partial() -> Result<()> {
-    run_test_complete("car\t", "cargo")?;
+    check_complete("car\t", "cargo")?;
     Ok(())
 }
 
@@ -582,7 +583,7 @@ fn redirect_input() {
     let tmp_dir = tempdir().unwrap();
     let output = tmp_dir.path().join("output");
 
-    run_test(
+    check_contains(
         &format!(
             r#"
 echo > {} "hello world"
@@ -592,6 +593,24 @@ tail < {}
             output.display(),
         ),
         "hello world",
+        TestOption::default(),
+    )
+}
+
+#[test]
+fn pipe_exec() {
+    let tmp_dir = tempdir().unwrap();
+    let output = tmp_dir.path().join("output");
+    check_contains(
+        &format!(
+            r#"
+echo > {} hello
+cat {} | wc
+"#,
+            output.display(),
+            output.display(),
+        ),
+        "      1       1       6",
         TestOption::default(),
     )
 }

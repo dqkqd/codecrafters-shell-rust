@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Context;
 
-use super::{BuiltinCommand, Command, InvalidCommand, PathCommand, ProgramArgs};
+use super::{BuiltinCommand, Command, CommandArgs, InvalidCommand, PathCommand};
 
 pub(super) trait Execute {
     fn execute(
@@ -79,6 +79,20 @@ impl Execute for PathCommand {
                 });
                 child.wait_with_output()?
             }
+            PIn::Shared(ref_cell) => {
+                let mut child = command
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?;
+
+                let data = ref_cell.borrow().to_vec();
+                let mut stdin = child.stdin.take().expect("failed to open stdin");
+                std::thread::spawn(move || {
+                    stdin.write_all(&data).expect("Failed to write to stdin");
+                });
+                child.wait_with_output()?
+            }
             PIn::Empty => command.output()?,
         };
 
@@ -106,7 +120,7 @@ impl Execute for BuiltinCommand {
     }
 }
 
-fn exit_command(args: &mut ProgramArgs, stderr: &mut [PErr]) -> anyhow::Result<()> {
+fn exit_command(args: &mut CommandArgs, stderr: &mut [PErr]) -> anyhow::Result<()> {
     match args.0.first_mut() {
         Some(code) => match code.parse::<i32>() {
             Ok(code) => std::process::exit(code),
@@ -123,7 +137,7 @@ fn exit_command(args: &mut ProgramArgs, stderr: &mut [PErr]) -> anyhow::Result<(
     }
 }
 
-fn echo_command(args: &mut ProgramArgs, stdout: &mut [POut]) -> anyhow::Result<()> {
+fn echo_command(args: &mut CommandArgs, stdout: &mut [POut]) -> anyhow::Result<()> {
     let mut iter = args.0.iter().peekable();
     while let Some(arg) = iter.next() {
         write_stdout(stdout, arg.as_bytes())?;
@@ -136,7 +150,7 @@ fn echo_command(args: &mut ProgramArgs, stdout: &mut [POut]) -> anyhow::Result<(
     Ok(())
 }
 
-fn type_command(args: &mut ProgramArgs, stdout: &mut [POut]) -> anyhow::Result<()> {
+fn type_command(args: &mut CommandArgs, stdout: &mut [POut]) -> anyhow::Result<()> {
     for arg in &args.0 {
         match BuiltinCommand::from_str(arg) {
             Ok(_) => write_stdout(stdout, format!("{arg} is a shell builtin\n").as_bytes())?,
@@ -163,7 +177,7 @@ fn pwd_command(stdout: &mut [POut]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cd_command(args: &mut ProgramArgs, stderr: &mut [PErr]) -> anyhow::Result<()> {
+fn cd_command(args: &mut CommandArgs, stderr: &mut [PErr]) -> anyhow::Result<()> {
     match &args.0[..] {
         [path] => {
             let expanded_path = shellexpand::tilde(&path);
