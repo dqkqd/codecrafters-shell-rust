@@ -8,19 +8,14 @@ mod execute;
 
 #[derive(Debug)]
 pub(crate) struct PipedCommand {
-    stdin: Vec<PIn>,
+    stdin: PIn,
     stdout: Vec<POut>,
     stderr: Vec<PErr>,
     inner: Command,
 }
 
 impl PipedCommand {
-    pub fn new(
-        stdin: Vec<PIn>,
-        stdout: Vec<POut>,
-        stderr: Vec<PErr>,
-        command: Command,
-    ) -> PipedCommand {
+    pub fn new(stdin: PIn, stdout: Vec<POut>, stderr: Vec<PErr>, command: Command) -> PipedCommand {
         PipedCommand {
             stdin,
             stdout,

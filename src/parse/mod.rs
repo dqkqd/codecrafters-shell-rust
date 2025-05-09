@@ -31,6 +31,7 @@ struct CommandToken(String);
 
 #[derive(Debug, PartialEq, Eq)]
 enum RedirectToken {
+    Input { n: i32, word: String },
     Output { n: i32, word: String },
     AppendOutput { n: i32, word: String },
 }
@@ -100,9 +101,7 @@ impl StreamCommandParser {
                 PType::Err(perr) => stderr.push(perr),
             }
         }
-        if stdin.is_empty() {
-            stdin.push(PIn::Std(io::stdin()))
-        }
+        let stdin = stdin.pop().unwrap_or(PIn::Empty);
         if stdout.is_empty() {
             stdout.push(POut::Std(io::stdout()))
         }

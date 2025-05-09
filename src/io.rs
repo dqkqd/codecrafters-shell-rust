@@ -18,9 +18,9 @@ pub(crate) fn write_stdout(stdout: &mut [POut], data: &[u8]) -> anyhow::Result<(
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(crate) enum PIn {
-    Std(io::Stdin),
+    File(File),
+    Empty,
 }
 
 #[derive(Debug)]

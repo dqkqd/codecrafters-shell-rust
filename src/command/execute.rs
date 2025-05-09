@@ -1,4 +1,9 @@
-use std::{env, str::FromStr};
+use std::{
+    env,
+    io::{Read, Write},
+    process::Stdio,
+    str::FromStr,
+};
 
 use crate::{
     io::{write_stderr, write_stdout, PErr, PIn, POut},
@@ -11,7 +16,7 @@ use super::{BuiltinCommand, Command, InvalidCommand, PathCommand, ProgramArgs};
 pub(super) trait Execute {
     fn execute(
         &mut self,
-        stdin: &mut [PIn],
+        stdin: &mut PIn,
         stdout: &mut [POut],
         stderr: &mut [PErr],
     ) -> anyhow::Result<()>;
@@ -20,7 +25,7 @@ pub(super) trait Execute {
 impl Execute for Command {
     fn execute(
         &mut self,
-        stdin: &mut [PIn],
+        stdin: &mut PIn,
         stdout: &mut [POut],
         stderr: &mut [PErr],
     ) -> anyhow::Result<()> {
@@ -33,12 +38,7 @@ impl Execute for Command {
 }
 
 impl Execute for InvalidCommand {
-    fn execute(
-        &mut self,
-        _: &mut [PIn],
-        stdout: &mut [POut],
-        _: &mut [PErr],
-    ) -> anyhow::Result<()> {
+    fn execute(&mut self, _: &mut PIn, stdout: &mut [POut], _: &mut [PErr]) -> anyhow::Result<()> {
         write_stdout(
             stdout,
             format!("{}: command not found\n", self.0).as_bytes(),
@@ -51,17 +51,36 @@ impl Execute for InvalidCommand {
 impl Execute for PathCommand {
     fn execute(
         &mut self,
-        _: &mut [PIn],
+        stdin: &mut PIn,
         stdout: &mut [POut],
         stderr: &mut [PErr],
     ) -> anyhow::Result<()> {
-        let output = std::process::Command::new(
-            self.path
-                .file_name()
-                .with_context(|| format!("invalid filename for path `{}`", self.path.display()))?,
-        )
-        .args(&self.args.0)
-        .output()?;
+        let executable = self
+            .path
+            .file_name()
+            .with_context(|| format!("invalid filename for path `{}`", self.path.display()))?;
+
+        let mut command = std::process::Command::new(executable);
+        let command = command.args(&self.args.0);
+
+        let output = match stdin {
+            PIn::File(file) => {
+                let mut child = command
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?;
+
+                let mut data = vec![];
+                file.read_to_end(&mut data)?;
+                let mut stdin = child.stdin.take().expect("failed to open stdin");
+                std::thread::spawn(move || {
+                    stdin.write_all(&data).expect("Failed to write to stdin");
+                });
+                child.wait_with_output()?
+            }
+            PIn::Empty => command.output()?,
+        };
 
         write_stdout(stdout, &output.stdout)?;
         write_stderr(stderr, &output.stderr)?;
@@ -73,7 +92,7 @@ impl Execute for PathCommand {
 impl Execute for BuiltinCommand {
     fn execute(
         &mut self,
-        _: &mut [PIn],
+        _: &mut PIn,
         stdout: &mut [POut],
         stderr: &mut [PErr],
     ) -> anyhow::Result<()> {

@@ -576,3 +576,22 @@ fn complete_partial() -> Result<()> {
     run_test_complete("car\t", "cargo")?;
     Ok(())
 }
+
+#[test]
+fn redirect_input() {
+    let tmp_dir = tempdir().unwrap();
+    let output = tmp_dir.path().join("output");
+
+    run_test(
+        &format!(
+            r#"
+echo > {} "hello world"
+tail < {}
+"#,
+            output.display(),
+            output.display(),
+        ),
+        "hello world",
+        TestOption::default(),
+    )
+}

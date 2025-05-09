@@ -1,4 +1,4 @@
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 
 use anyhow::bail;
 use winnow::{
@@ -7,17 +7,24 @@ use winnow::{
     ModalResult, Parser,
 };
 
-use crate::io::{PErr, POut, PType};
+use crate::io::{PErr, PIn, POut, PType};
 
 use super::{command::command_token, RedirectToken, Stream};
 
 pub(super) fn redirect_token(stream: &mut Stream) -> ModalResult<RedirectToken> {
-    alt((append_output, output)).parse_next(stream)
+    alt((input, append_output, output)).parse_next(stream)
 }
 
 impl RedirectToken {
     pub(super) fn into_pipe(self) -> anyhow::Result<PType> {
         match self {
+            RedirectToken::Input { n, word } => {
+                let file = File::open(word)?;
+                if n != 0 {
+                    bail!("only support stdin for redirect input, received {n}")
+                }
+                Ok(PType::In(PIn::File(file)))
+            }
             RedirectToken::Output { n, word } => {
                 let file = OpenOptions::new()
                     .create(true)
@@ -66,6 +73,18 @@ fn append_output(stream: &mut Stream) -> ModalResult<RedirectToken> {
     )
         .parse_next(stream)?;
     Ok(RedirectToken::AppendOutput { n, word: word.0 })
+}
+
+fn input(stream: &mut Stream) -> ModalResult<RedirectToken> {
+    let (_, n, _, _, word) = (
+        multispace0,
+        opt(digit1).map(|s| s.map(|s: &str| s.parse::<i32>().unwrap()).unwrap_or(0)),
+        "<",
+        multispace0,
+        command_token,
+    )
+        .parse_next(stream)?;
+    Ok(RedirectToken::Input { n, word: word.0 })
 }
 
 #[cfg(test)]
@@ -138,6 +157,31 @@ mod test {
         assert_eq!(
             redirect_token(&mut Stream::new("2>>word\n")).unwrap(),
             RedirectToken::AppendOutput {
+                n: 2,
+                word: "word".into()
+            }
+        );
+    }
+
+    #[test]
+    fn test_input() {
+        assert_eq!(
+            redirect_token(&mut Stream::new("<word\n")).unwrap(),
+            RedirectToken::Input {
+                n: 0,
+                word: "word".into()
+            }
+        );
+        assert_eq!(
+            redirect_token(&mut Stream::new("< word \n")).unwrap(),
+            RedirectToken::Input {
+                n: 0,
+                word: "word".into()
+            }
+        );
+        assert_eq!(
+            redirect_token(&mut Stream::new("2< word\n")).unwrap(),
+            RedirectToken::Input {
                 n: 2,
                 word: "word".into()
             }
