@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{BufReader, Read, Write},
+    io::{BufReader, Read},
     process::{Child, Stdio},
     str::FromStr,
     thread::JoinHandle,
@@ -116,8 +116,10 @@ impl Execute for PathCommand {
             child.stderr.take().with_context(|| "cannot get stderr")?,
         );
 
-        let stdin = std::thread::spawn(move || {
-            stdin.write(cmd_stdin).expect("Failed to write to stdin");
+        std::thread::spawn(move || {
+            stdin
+                .send_to_writer(cmd_stdin)
+                .expect("Failed to write to stdin");
         });
         let stdout = std::thread::spawn(move || {
             let mut reader = BufReader::new(cmd_stdout);

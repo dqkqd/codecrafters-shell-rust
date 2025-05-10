@@ -16,7 +16,7 @@ use crate::{
     utils::path_lookup_exact,
 };
 use crate::{
-    command::{Command, PipedCommand},
+    command::{Command, PipeCommands},
     io::{PErr, PIn, POut, PType},
 };
 
@@ -67,7 +67,7 @@ impl StreamCommandParser {
         self.parsed.is_empty() && self.remaining.trim().is_empty()
     }
 
-    pub fn finish(mut self) -> anyhow::Result<PipedCommand> {
+    pub fn finish(mut self) -> anyhow::Result<PipeCommands> {
         self.push("\n");
 
         let raw_input = self.input();
@@ -93,11 +93,7 @@ impl StreamCommandParser {
             }
         }
 
-        if commands.len() == 1 {
-            Ok(PipedCommand::One(commands.pop().unwrap()))
-        } else {
-            Ok(PipedCommand::Many(commands))
-        }
+        Ok(PipeCommands { commands })
     }
 
     pub fn remaining(&self) -> &str {

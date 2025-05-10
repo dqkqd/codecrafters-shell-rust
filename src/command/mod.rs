@@ -8,45 +8,38 @@ use strum::{AsRefStr, EnumIter, EnumString};
 mod execute;
 
 #[derive(Debug)]
-pub(crate) enum PipedCommand {
-    One(StdioCommand),
-    Many(Vec<StdioCommand>),
+pub(crate) struct PipeCommands {
+    pub commands: Vec<StdioCommand>,
 }
 
-impl PipedCommand {
-    pub fn execute(self) -> Result<()> {
-        match self {
-            PipedCommand::One(stdio_command) => {
-                let output = stdio_command.execute()?;
-                output.wait()?;
-            }
-            PipedCommand::Many(mut stdio_commands) => {
-                for i in 0..stdio_commands.len() - 1 {
-                    let (tx, rx) = std::sync::mpsc::channel();
+impl PipeCommands {
+    pub fn execute(mut self) -> Result<()> {
+        // set up pipe
+        for i in 0..self.commands.len() - 1 {
+            let (tx, rx) = std::sync::mpsc::channel();
 
-                    // first remove stdout in stdio_command
-                    stdio_commands[i]
-                        .stdout
-                        .retain(|p| !matches!(p, POut::Std(_)));
-                    // then add new shared data into stdout
-                    stdio_commands[i].stdout.push(POut::Pipe(tx));
+            // first remove stdout in stdio_command
+            self.commands[i]
+                .stdout
+                .retain(|p| !matches!(p, POut::Std(_)));
+            // then add new shared data into stdout
+            self.commands[i].stdout.push(POut::Pipe(tx));
 
-                    // add this shared data into the next command's stdin
-                    stdio_commands[i + 1].stdin = PIn::Pipe(rx);
-                }
+            // add this shared data into the next command's stdin
+            self.commands[i + 1].stdin = PIn::Pipe(rx);
+        }
 
-                let output: Result<Vec<ExecutedOutput>> = stdio_commands
-                    .into_iter()
-                    .map(|command| command.execute())
-                    .collect();
-                let mut outputs = output?;
+        let output: Result<Vec<ExecutedOutput>> = self
+            .commands
+            .into_iter()
+            .map(|command| command.execute())
+            .collect();
+        let mut outputs = output?;
 
-                // only wait for the last execution, then kill others
-                outputs.pop().and_then(|out| out.wait().ok());
-                for out in outputs {
-                    out.kill()?;
-                }
-            }
+        // only wait for the last execution, then kill others
+        outputs.pop().and_then(|out| out.wait().ok());
+        for out in outputs {
+            out.kill()?;
         }
 
         Ok(())
