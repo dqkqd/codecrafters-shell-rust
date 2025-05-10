@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
-use crate::io::{PErr, PIn, POut, SharedData};
-use execute::Execute;
+use crate::io::{PErr, PIn, POut};
+use anyhow::Result;
+use execute::{Execute, ExecutedOutput};
 use strum::{AsRefStr, EnumIter, EnumString};
 
 mod execute;
@@ -13,33 +14,42 @@ pub(crate) enum PipedCommand {
 }
 
 impl PipedCommand {
-    pub fn execute(&mut self) -> anyhow::Result<()> {
+    pub fn execute(self) -> Result<()> {
         match self {
-            PipedCommand::One(stdio_command) => stdio_command.execute(),
-            PipedCommand::Many(stdio_commands) => {
+            PipedCommand::One(stdio_command) => {
+                let output = stdio_command.execute()?;
+                output.wait()?;
+            }
+            PipedCommand::Many(mut stdio_commands) => {
                 for i in 0..stdio_commands.len() - 1 {
-                    let shared_data = SharedData::default();
+                    let (tx, rx) = std::sync::mpsc::channel();
 
                     // first remove stdout in stdio_command
                     stdio_commands[i]
                         .stdout
                         .retain(|p| !matches!(p, POut::Std(_)));
                     // then add new shared data into stdout
-                    stdio_commands[i]
-                        .stdout
-                        .push(POut::Shared(shared_data.clone()));
+                    stdio_commands[i].stdout.push(POut::Pipe(tx));
 
                     // add this shared data into the next command's stdin
-                    stdio_commands[i + 1].stdin = PIn::Shared(shared_data.clone());
+                    stdio_commands[i + 1].stdin = PIn::Pipe(rx);
                 }
 
-                for command in stdio_commands {
-                    command.execute()?;
-                }
+                let output: Result<Vec<ExecutedOutput>> = stdio_commands
+                    .into_iter()
+                    .map(|command| command.execute())
+                    .collect();
+                let mut outputs = output?;
 
-                Ok(())
+                // only wait for the last execution, then kill others
+                outputs.pop().and_then(|out| out.wait().ok());
+                for out in outputs {
+                    out.kill()?;
+                }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -62,10 +72,8 @@ impl StdioCommand {
         }
     }
 
-    pub fn execute(&mut self) -> anyhow::Result<()> {
-        self.inner
-            .execute(&mut self.stdin, &mut self.stdout, &mut self.stderr)?;
-        Ok(())
+    pub fn execute(mut self) -> Result<ExecutedOutput> {
+        self.inner.execute(self.stdin, self.stdout, self.stderr)
     }
 }
 

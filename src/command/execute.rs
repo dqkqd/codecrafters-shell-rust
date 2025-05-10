@@ -1,34 +1,76 @@
 use std::{
     env,
-    io::{Read, Write},
-    process::Stdio,
+    io::{BufRead, BufReader},
+    process::{Child, Stdio},
     str::FromStr,
+    thread::JoinHandle,
 };
 
 use crate::{
     io::{write_stderr, write_stdout, PErr, PIn, POut},
     utils::path_lookup_exact,
 };
-use anyhow::Context;
+use anyhow::{Context, Result};
 
 use super::{BuiltinCommand, Command, CommandArgs, InvalidCommand, PathCommand};
+
+#[derive(Debug)]
+pub(crate) enum ExecutedOutput {
+    NonBlock,
+    Wait {
+        stdout: JoinHandle<()>,
+        stderr: JoinHandle<()>,
+        child: Child,
+    },
+}
+
+impl ExecutedOutput {
+    pub fn kill(self) -> Result<()> {
+        match self {
+            ExecutedOutput::NonBlock => {}
+            ExecutedOutput::Wait { mut child, .. } => {
+                child.kill()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn wait(self) -> Result<()> {
+        match self {
+            ExecutedOutput::NonBlock => {}
+            ExecutedOutput::Wait {
+                stdout,
+                stderr,
+                child,
+                ..
+            } => {
+                stdout.join().expect("cannot join stdout");
+                stderr.join().expect("cannot join stderr");
+                child.wait_with_output()?;
+            }
+        }
+
+        Ok(())
+    }
+}
 
 pub(super) trait Execute {
     fn execute(
         &mut self,
-        stdin: &mut PIn,
-        stdout: &mut [POut],
-        stderr: &mut [PErr],
-    ) -> anyhow::Result<()>;
+        stdin: PIn,
+        stdout: Vec<POut>,
+        stderr: Vec<PErr>,
+    ) -> Result<ExecutedOutput>;
 }
 
 impl Execute for Command {
     fn execute(
         &mut self,
-        stdin: &mut PIn,
-        stdout: &mut [POut],
-        stderr: &mut [PErr],
-    ) -> anyhow::Result<()> {
+        stdin: PIn,
+        stdout: Vec<POut>,
+        stderr: Vec<PErr>,
+    ) -> Result<ExecutedOutput> {
         match self {
             Command::Builtin(builtin_command) => builtin_command.execute(stdin, stdout, stderr),
             Command::Invalid(invalid_command) => invalid_command.execute(stdin, stdout, stderr),
@@ -38,23 +80,23 @@ impl Execute for Command {
 }
 
 impl Execute for InvalidCommand {
-    fn execute(&mut self, _: &mut PIn, stdout: &mut [POut], _: &mut [PErr]) -> anyhow::Result<()> {
+    fn execute(&mut self, _: PIn, mut stdout: Vec<POut>, _: Vec<PErr>) -> Result<ExecutedOutput> {
         write_stdout(
-            stdout,
+            &mut stdout,
             format!("{}: command not found\n", self.0).as_bytes(),
         )?;
 
-        Ok(())
+        Ok(ExecutedOutput::NonBlock)
     }
 }
 
 impl Execute for PathCommand {
     fn execute(
         &mut self,
-        stdin: &mut PIn,
-        stdout: &mut [POut],
-        stderr: &mut [PErr],
-    ) -> anyhow::Result<()> {
+        mut stdin: PIn,
+        mut stdout: Vec<POut>,
+        mut stderr: Vec<PErr>,
+    ) -> Result<ExecutedOutput> {
         let executable = self
             .path
             .file_name()
@@ -62,54 +104,46 @@ impl Execute for PathCommand {
 
         let mut command = std::process::Command::new(executable);
         let command = command.args(&self.args.0);
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
 
-        let output = match stdin {
-            PIn::File(file) => {
-                let mut child = command
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()?;
+        let (cmd_stdin, cmd_stdout, cmd_stderr) = (
+            child.stdin.take().with_context(|| "cannot get stdin")?,
+            child.stdout.take().with_context(|| "cannot get stdout")?,
+            child.stderr.take().with_context(|| "cannot get stderr")?,
+        );
 
-                let mut data = vec![];
-                file.read_to_end(&mut data)?;
-                let mut stdin = child.stdin.take().expect("failed to open stdin");
-                std::thread::spawn(move || {
-                    stdin.write_all(&data).expect("Failed to write to stdin");
-                });
-                child.wait_with_output()?
+        std::thread::spawn(move || {
+            stdin.write(cmd_stdin).expect("Failed to write to stdin");
+        });
+        let stdout = std::thread::spawn(move || {
+            let reader = BufReader::new(cmd_stdout);
+            for line_result in reader.lines() {
+                let line = line_result.unwrap() + "\n";
+                write_stdout(&mut stdout, line.as_bytes()).expect("Failed to write to stdout");
             }
-            PIn::Shared(ref_cell) => {
-                let mut child = command
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()?;
-
-                let data = ref_cell.borrow().to_vec();
-                let mut stdin = child.stdin.take().expect("failed to open stdin");
-                std::thread::spawn(move || {
-                    stdin.write_all(&data).expect("Failed to write to stdin");
-                });
-                child.wait_with_output()?
+        });
+        let stderr = std::thread::spawn(move || {
+            let reader = BufReader::new(cmd_stderr);
+            for line_result in reader.lines() {
+                let line = line_result.unwrap() + "\n";
+                write_stderr(&mut stderr, line.as_bytes()).expect("Failed to write to stderr");
             }
-            PIn::Empty => command.output()?,
-        };
+        });
 
-        write_stdout(stdout, &output.stdout)?;
-        write_stderr(stderr, &output.stderr)?;
-
-        Ok(())
+        Ok(ExecutedOutput::Wait {
+            stdout,
+            stderr,
+            child,
+        })
     }
 }
 
 impl Execute for BuiltinCommand {
-    fn execute(
-        &mut self,
-        _: &mut PIn,
-        stdout: &mut [POut],
-        stderr: &mut [PErr],
-    ) -> anyhow::Result<()> {
+    fn execute(&mut self, _: PIn, stdout: Vec<POut>, stderr: Vec<PErr>) -> Result<ExecutedOutput> {
         match self {
             BuiltinCommand::Exit(args) => exit_command(args, stderr),
             BuiltinCommand::Echo(args) => echo_command(args, stdout),
@@ -120,13 +154,13 @@ impl Execute for BuiltinCommand {
     }
 }
 
-fn exit_command(args: &mut CommandArgs, stderr: &mut [PErr]) -> anyhow::Result<()> {
+fn exit_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<ExecutedOutput> {
     match args.0.first_mut() {
         Some(code) => match code.parse::<i32>() {
             Ok(code) => std::process::exit(code),
             Err(_) => {
                 write_stderr(
-                    stderr,
+                    &mut stderr,
                     format!("invalid args: [{}]", args.0.join(",")).as_bytes(),
                 )?;
                 std::process::exit(-1);
@@ -137,59 +171,62 @@ fn exit_command(args: &mut CommandArgs, stderr: &mut [PErr]) -> anyhow::Result<(
     }
 }
 
-fn echo_command(args: &mut CommandArgs, stdout: &mut [POut]) -> anyhow::Result<()> {
+fn echo_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<ExecutedOutput> {
     let mut iter = args.0.iter().peekable();
     while let Some(arg) = iter.next() {
-        write_stdout(stdout, arg.as_bytes())?;
+        write_stdout(&mut stdout, arg.as_bytes())?;
         if iter.peek().is_some() {
-            write_stdout(stdout, b" ")?;
+            write_stdout(&mut stdout, b" ")?;
         }
     }
-    write_stdout(stdout, b"\n")?;
+    write_stdout(&mut stdout, b"\n")?;
 
-    Ok(())
+    Ok(ExecutedOutput::NonBlock)
 }
 
-fn type_command(args: &mut CommandArgs, stdout: &mut [POut]) -> anyhow::Result<()> {
+fn type_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> anyhow::Result<ExecutedOutput> {
     for arg in &args.0 {
         match BuiltinCommand::from_str(arg) {
-            Ok(_) => write_stdout(stdout, format!("{arg} is a shell builtin\n").as_bytes())?,
+            Ok(_) => write_stdout(
+                &mut stdout,
+                format!("{arg} is a shell builtin\n").as_bytes(),
+            )?,
             Err(_) => match path_lookup_exact(arg) {
                 Ok(path) => write_stdout(
-                    stdout,
+                    &mut stdout,
                     format!("{arg} is {}\n", path.as_path().display()).as_bytes(),
                 )?,
-                Err(_) => write_stdout(stdout, format!("{arg}: not found\n").as_bytes())?,
+                Err(_) => write_stdout(&mut stdout, format!("{arg}: not found\n").as_bytes())?,
             },
         }
     }
 
-    Ok(())
+    Ok(ExecutedOutput::NonBlock)
 }
 
-fn pwd_command(stdout: &mut [POut]) -> anyhow::Result<()> {
+fn pwd_command(mut stdout: Vec<POut>) -> Result<ExecutedOutput> {
     let current_dir = env::current_dir()?;
     write_stdout(
-        stdout,
+        &mut stdout,
         format!("{}\n", current_dir.as_path().display()).as_bytes(),
     )?;
 
-    Ok(())
+    Ok(ExecutedOutput::NonBlock)
 }
 
-fn cd_command(args: &mut CommandArgs, stderr: &mut [PErr]) -> anyhow::Result<()> {
+fn cd_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<ExecutedOutput> {
     match &args.0[..] {
         [path] => {
             let expanded_path = shellexpand::tilde(&path);
             if std::env::set_current_dir(expanded_path.as_ref()).is_err() {
                 write_stderr(
-                    stderr,
+                    &mut stderr,
                     format!("cd: {path}: No such file or directory\n").as_bytes(),
                 )?;
             }
         }
-        _ => write_stderr(stderr, "cd: No path given".as_bytes())?,
+        _ => write_stderr(&mut stderr, "cd: No path given".as_bytes())?,
     }
 
-    Ok(())
+    Ok(ExecutedOutput::NonBlock)
 }

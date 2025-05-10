@@ -23,7 +23,7 @@ pub fn run_shell() -> Result<()> {
                 rl.add_history_entry(line.as_str())?;
                 let parser = StreamCommandParser::new(&line);
                 if !parser.is_empty() {
-                    let mut command = parser.finish()?;
+                    let command = parser.finish()?;
                     command.execute()?;
                 }
             }

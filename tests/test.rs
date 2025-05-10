@@ -614,3 +614,21 @@ cat {} | wc
         TestOption::default(),
     )
 }
+
+#[test]
+fn pipe_exec_wait() {
+    let tmp_dir = tempdir().unwrap();
+    let output = tmp_dir.path().join("output");
+    check_contains(
+        &format!(
+            r#"
+echo > {} hello
+tail -f {} | head -n 1 | wc
+"#,
+            output.display(),
+            output.display(),
+        ),
+        "      1       1       6",
+        TestOption::default(),
+    )
+}
