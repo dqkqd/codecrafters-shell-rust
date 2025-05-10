@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{BufRead, BufReader},
+    io::{BufReader, Read, Write},
     process::{Child, Stdio},
     str::FromStr,
     thread::JoinHandle,
@@ -116,24 +116,23 @@ impl Execute for PathCommand {
             child.stderr.take().with_context(|| "cannot get stderr")?,
         );
 
-        std::thread::spawn(move || {
+        let stdin = std::thread::spawn(move || {
             stdin.write(cmd_stdin).expect("Failed to write to stdin");
         });
         let stdout = std::thread::spawn(move || {
-            let reader = BufReader::new(cmd_stdout);
-            for line_result in reader.lines() {
-                let line = line_result.unwrap() + "\n";
-                write_stdout(&mut stdout, line.as_bytes()).expect("Failed to write to stdout");
+            let mut reader = BufReader::new(cmd_stdout);
+            let mut buf = [0; 1];
+            while reader.read_exact(&mut buf).is_ok() {
+                write_stdout(&mut stdout, &buf).expect("Failed to write to stdout");
             }
         });
         let stderr = std::thread::spawn(move || {
-            let reader = BufReader::new(cmd_stderr);
-            for line_result in reader.lines() {
-                let line = line_result.unwrap() + "\n";
-                write_stderr(&mut stderr, line.as_bytes()).expect("Failed to write to stderr");
+            let mut reader = BufReader::new(cmd_stderr);
+            let mut buf = [0; 1];
+            while reader.read_exact(&mut buf).is_ok() {
+                write_stderr(&mut stderr, &buf).expect("Failed to write to stderr");
             }
         });
-
         Ok(ExecutedOutput::Wait {
             stdout,
             stderr,

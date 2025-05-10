@@ -632,3 +632,21 @@ tail -f {} | head -n 1 | wc
         TestOption::default(),
     )
 }
+
+#[test]
+fn pipe_exec_non_endline() {
+    let tmp_dir = tempdir().unwrap();
+    let output = tmp_dir.path().join("output");
+    fs::write(&output, "hello").unwrap();
+
+    check_contains(
+        &format!(
+            r#"
+cat {} | wc
+"#,
+            output.display(),
+        ),
+        "      0       1       5",
+        TestOption::default(),
+    )
+}
