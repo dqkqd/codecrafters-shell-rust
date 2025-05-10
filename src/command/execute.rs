@@ -185,7 +185,7 @@ fn echo_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<Execute
     Ok(ExecutedOutput::NonBlock)
 }
 
-fn type_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> anyhow::Result<ExecutedOutput> {
+fn type_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<ExecutedOutput> {
     for arg in &args.0 {
         match BuiltinCommand::from_str(arg) {
             Ok(_) => write_stdout(

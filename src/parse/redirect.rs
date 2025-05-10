@@ -1,6 +1,6 @@
 use std::fs::{File, OpenOptions};
 
-use anyhow::bail;
+use anyhow::{bail, Result};
 use winnow::{
     ascii::{digit1, multispace0},
     combinator::{alt, opt},
@@ -16,7 +16,7 @@ pub(super) fn redirect_token(stream: &mut Stream) -> ModalResult<RedirectToken> 
 }
 
 impl RedirectToken {
-    pub(super) fn into_pipe(self) -> anyhow::Result<PType> {
+    pub(super) fn into_pipe(self) -> Result<PType> {
         match self {
             RedirectToken::Input { n, word } => {
                 let file = File::open(word)?;

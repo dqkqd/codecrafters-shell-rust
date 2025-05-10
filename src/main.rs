@@ -1,6 +1,7 @@
+use anyhow::Result;
 use codecrafters_shell::run_shell;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     run_shell()?;
     Ok(())
 }

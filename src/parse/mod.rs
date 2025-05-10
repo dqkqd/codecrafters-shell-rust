@@ -1,7 +1,7 @@
 use std::io;
 use std::str::FromStr;
 
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, Result};
 use command::command_token;
 use redirect::redirect_token;
 use winnow::{
@@ -67,7 +67,7 @@ impl StreamCommandParser {
         self.parsed.is_empty() && self.remaining.trim().is_empty()
     }
 
-    pub fn finish(mut self) -> anyhow::Result<PipeCommands> {
+    pub fn finish(mut self) -> Result<PipeCommands> {
         self.push("\n");
 
         let raw_input = self.input();
@@ -136,12 +136,12 @@ fn token(stream: &mut Stream) -> ModalResult<Token> {
     .parse_next(stream)
 }
 
-fn tokens_to_stdio_command(tokens: Vec<Token>) -> anyhow::Result<StdioCommand> {
+fn tokens_to_stdio_command(tokens: Vec<Token>) -> Result<StdioCommand> {
     let mut redirect_args = vec![];
     let mut command_args = vec![];
     for tok in tokens {
         match tok {
-            Token::Pipe => {}
+            Token::Pipe => bail!("tokens should not contain pipe"),
             Token::Redirect(redirect_arg) => redirect_args.push(redirect_arg),
             Token::Command(command_arg) => command_args.push(command_arg),
         }
@@ -154,7 +154,7 @@ fn tokens_to_stdio_command(tokens: Vec<Token>) -> anyhow::Result<StdioCommand> {
     let redirect_pipes = redirect_args
         .into_iter()
         .map(|r| r.into_pipe())
-        .collect::<anyhow::Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?;
 
     let mut stdin = vec![];
     let mut stdout = vec![];

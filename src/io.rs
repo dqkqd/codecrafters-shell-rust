@@ -4,14 +4,16 @@ use std::{
     sync::mpsc::{Receiver, Sender},
 };
 
-pub(crate) fn write_stderr(stderr: &mut [PErr], data: &[u8]) -> anyhow::Result<()> {
+use anyhow::Result;
+
+pub(crate) fn write_stderr(stderr: &mut [PErr], data: &[u8]) -> Result<()> {
     for s in stderr {
         s.consume(data)?;
     }
     Ok(())
 }
 
-pub(crate) fn write_stdout(stdout: &mut [POut], data: &[u8]) -> anyhow::Result<()> {
+pub(crate) fn write_stdout(stdout: &mut [POut], data: &[u8]) -> Result<()> {
     for s in stdout {
         s.consume(data)?;
     }
@@ -50,7 +52,7 @@ pub(crate) enum PType {
 
 impl PIn {
     /// Write all the remaining data into writer
-    pub(crate) fn send_to_writer<W: Write>(&mut self, mut writer: W) -> anyhow::Result<()> {
+    pub(crate) fn send_to_writer<W: Write>(&mut self, mut writer: W) -> Result<()> {
         match self {
             PIn::File(file) => {
                 let mut data = Vec::new();
@@ -71,7 +73,7 @@ impl PIn {
 
 impl POut {
     /// Get all data and send into `POut`
-    fn consume(&mut self, data: &[u8]) -> anyhow::Result<()> {
+    fn consume(&mut self, data: &[u8]) -> Result<()> {
         match self {
             POut::Std(stdout) => write_all_and_flush(stdout, data)?,
             POut::File(file) => write_all_and_flush(file, data)?,
@@ -83,7 +85,7 @@ impl POut {
 
 impl PErr {
     /// Get all data and send into `PErr`
-    fn consume(&mut self, data: &[u8]) -> anyhow::Result<()> {
+    fn consume(&mut self, data: &[u8]) -> Result<()> {
         match self {
             PErr::Std(stderr) => write_all_and_flush(stderr, data)?,
             PErr::File(file) => write_all_and_flush(file, data)?,
@@ -93,7 +95,7 @@ impl PErr {
     }
 }
 
-fn write_all_and_flush<W: Write>(w: &mut W, data: &[u8]) -> anyhow::Result<()> {
+fn write_all_and_flush<W: Write>(w: &mut W, data: &[u8]) -> Result<()> {
     w.write_all(data)?;
     w.flush()?;
     Ok(())
