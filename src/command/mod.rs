@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::io::{PErr, PIn, POut};
 use anyhow::Result;
-use execute::{Execute, ExecutedOutput};
+use execute::{Execute, MaybeBlockedCommand};
 use strum::{AsRefStr, EnumIter, EnumString};
 
 mod execute;
@@ -29,7 +29,7 @@ impl PipeCommands {
             self.commands[i + 1].stdin = PIn::Pipe(rx);
         }
 
-        let output: Result<Vec<ExecutedOutput>> = self
+        let output: Result<Vec<MaybeBlockedCommand>> = self
             .commands
             .into_iter()
             .map(|command| command.execute())
@@ -65,7 +65,7 @@ impl StdioCommand {
         }
     }
 
-    pub fn execute(mut self) -> Result<ExecutedOutput> {
+    pub fn execute(mut self) -> Result<MaybeBlockedCommand> {
         self.inner.execute(self.stdin, self.stdout, self.stderr)
     }
 }

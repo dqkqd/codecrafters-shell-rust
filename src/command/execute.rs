@@ -15,20 +15,20 @@ use anyhow::{Context, Result};
 use super::{BuiltinCommand, Command, CommandArgs, InvalidCommand, PathCommand};
 
 #[derive(Debug)]
-pub(crate) enum ExecutedOutput {
+pub(crate) enum MaybeBlockedCommand {
     NonBlock,
-    Wait {
+    Block {
         stdout: JoinHandle<()>,
         stderr: JoinHandle<()>,
         child: Child,
     },
 }
 
-impl ExecutedOutput {
+impl MaybeBlockedCommand {
     pub fn kill(self) -> Result<()> {
         match self {
-            ExecutedOutput::NonBlock => {}
-            ExecutedOutput::Wait { mut child, .. } => {
+            MaybeBlockedCommand::NonBlock => {}
+            MaybeBlockedCommand::Block { mut child, .. } => {
                 child.kill()?;
             }
         }
@@ -38,8 +38,8 @@ impl ExecutedOutput {
 
     pub fn wait(self) -> Result<()> {
         match self {
-            ExecutedOutput::NonBlock => {}
-            ExecutedOutput::Wait {
+            MaybeBlockedCommand::NonBlock => {}
+            MaybeBlockedCommand::Block {
                 stdout,
                 stderr,
                 child,
@@ -61,7 +61,7 @@ pub(super) trait Execute {
         stdin: PIn,
         stdout: Vec<POut>,
         stderr: Vec<PErr>,
-    ) -> Result<ExecutedOutput>;
+    ) -> Result<MaybeBlockedCommand>;
 }
 
 impl Execute for Command {
@@ -70,7 +70,7 @@ impl Execute for Command {
         stdin: PIn,
         stdout: Vec<POut>,
         stderr: Vec<PErr>,
-    ) -> Result<ExecutedOutput> {
+    ) -> Result<MaybeBlockedCommand> {
         match self {
             Command::Builtin(builtin_command) => builtin_command.execute(stdin, stdout, stderr),
             Command::Invalid(invalid_command) => invalid_command.execute(stdin, stdout, stderr),
@@ -80,13 +80,18 @@ impl Execute for Command {
 }
 
 impl Execute for InvalidCommand {
-    fn execute(&mut self, _: PIn, mut stdout: Vec<POut>, _: Vec<PErr>) -> Result<ExecutedOutput> {
+    fn execute(
+        &mut self,
+        _: PIn,
+        mut stdout: Vec<POut>,
+        _: Vec<PErr>,
+    ) -> Result<MaybeBlockedCommand> {
         write_stdout(
             &mut stdout,
             format!("{}: command not found\n", self.0).as_bytes(),
         )?;
 
-        Ok(ExecutedOutput::NonBlock)
+        Ok(MaybeBlockedCommand::NonBlock)
     }
 }
 
@@ -96,7 +101,7 @@ impl Execute for PathCommand {
         mut stdin: PIn,
         mut stdout: Vec<POut>,
         mut stderr: Vec<PErr>,
-    ) -> Result<ExecutedOutput> {
+    ) -> Result<MaybeBlockedCommand> {
         let executable = self
             .path
             .file_name()
@@ -135,7 +140,8 @@ impl Execute for PathCommand {
                 write_stderr(&mut stderr, &buf).expect("Failed to write to stderr");
             }
         });
-        Ok(ExecutedOutput::Wait {
+
+        Ok(MaybeBlockedCommand::Block {
             stdout,
             stderr,
             child,
@@ -144,7 +150,12 @@ impl Execute for PathCommand {
 }
 
 impl Execute for BuiltinCommand {
-    fn execute(&mut self, _: PIn, stdout: Vec<POut>, stderr: Vec<PErr>) -> Result<ExecutedOutput> {
+    fn execute(
+        &mut self,
+        _: PIn,
+        stdout: Vec<POut>,
+        stderr: Vec<PErr>,
+    ) -> Result<MaybeBlockedCommand> {
         match self {
             BuiltinCommand::Exit(args) => exit_command(args, stderr),
             BuiltinCommand::Echo(args) => echo_command(args, stdout),
@@ -155,7 +166,7 @@ impl Execute for BuiltinCommand {
     }
 }
 
-fn exit_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<ExecutedOutput> {
+fn exit_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<MaybeBlockedCommand> {
     match args.0.first_mut() {
         Some(code) => match code.parse::<i32>() {
             Ok(code) => std::process::exit(code),
@@ -172,7 +183,7 @@ fn exit_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<Execute
     }
 }
 
-fn echo_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<ExecutedOutput> {
+fn echo_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<MaybeBlockedCommand> {
     let mut iter = args.0.iter().peekable();
     while let Some(arg) = iter.next() {
         write_stdout(&mut stdout, arg.as_bytes())?;
@@ -182,10 +193,10 @@ fn echo_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<Execute
     }
     write_stdout(&mut stdout, b"\n")?;
 
-    Ok(ExecutedOutput::NonBlock)
+    Ok(MaybeBlockedCommand::NonBlock)
 }
 
-fn type_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<ExecutedOutput> {
+fn type_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<MaybeBlockedCommand> {
     for arg in &args.0 {
         match BuiltinCommand::from_str(arg) {
             Ok(_) => write_stdout(
@@ -202,20 +213,20 @@ fn type_command(args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<Execute
         }
     }
 
-    Ok(ExecutedOutput::NonBlock)
+    Ok(MaybeBlockedCommand::NonBlock)
 }
 
-fn pwd_command(mut stdout: Vec<POut>) -> Result<ExecutedOutput> {
+fn pwd_command(mut stdout: Vec<POut>) -> Result<MaybeBlockedCommand> {
     let current_dir = env::current_dir()?;
     write_stdout(
         &mut stdout,
         format!("{}\n", current_dir.as_path().display()).as_bytes(),
     )?;
 
-    Ok(ExecutedOutput::NonBlock)
+    Ok(MaybeBlockedCommand::NonBlock)
 }
 
-fn cd_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<ExecutedOutput> {
+fn cd_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<MaybeBlockedCommand> {
     match &args.0[..] {
         [path] => {
             let expanded_path = shellexpand::tilde(&path);
@@ -229,5 +240,5 @@ fn cd_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<ExecutedO
         _ => write_stderr(&mut stderr, "cd: No path given".as_bytes())?,
     }
 
-    Ok(ExecutedOutput::NonBlock)
+    Ok(MaybeBlockedCommand::NonBlock)
 }
