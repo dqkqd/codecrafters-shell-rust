@@ -162,6 +162,7 @@ impl Execute for BuiltinCommand {
             BuiltinCommand::Type(args) => type_command(args, stdout),
             BuiltinCommand::Pwd => pwd_command(stdout),
             BuiltinCommand::Cd(args) => cd_command(args, stderr),
+            BuiltinCommand::History(_) => todo!(),
         }
     }
 }

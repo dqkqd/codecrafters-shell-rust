@@ -101,6 +101,8 @@ pub(crate) enum BuiltinCommand {
     Pwd,
     #[strum(serialize = "cd")]
     Cd(CommandArgs),
+    #[strum(serialize = "history")]
+    History(CommandArgs),
 }
 
 impl BuiltinCommand {
@@ -111,6 +113,7 @@ impl BuiltinCommand {
             BuiltinCommand::Type(_) => BuiltinCommand::Type(args),
             BuiltinCommand::Pwd => BuiltinCommand::Pwd,
             BuiltinCommand::Cd(_) => BuiltinCommand::Cd(args),
+            BuiltinCommand::History(_) => BuiltinCommand::History(args),
         }
     }
 }

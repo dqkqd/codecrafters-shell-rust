@@ -148,12 +148,14 @@ fn type_one() {
 type echo
 type exit
 type type
+type history
 type invalid_command
 "#,
         r#"
 echo is a shell builtin
 exit is a shell builtin
 type is a shell builtin
+history is a shell builtin
 invalid_command: not found
 "#,
         TestOption::no_path(),
