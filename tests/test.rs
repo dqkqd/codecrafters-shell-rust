@@ -652,3 +652,25 @@ cat {} | wc
         TestOption::default(),
     )
 }
+
+#[test]
+fn history() {
+    check_contains(
+        r#"
+echo hello
+echo world
+invalid_command
+history
+"#,
+        r#"
+hello
+world
+invalid_command: command not found
+    1 echo hello
+    2 echo world
+    3 invalid_command
+    4 history
+"#,
+        TestOption::no_path(),
+    )
+}

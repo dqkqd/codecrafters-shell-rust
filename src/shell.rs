@@ -1,9 +1,12 @@
+use std::{fs::OpenOptions, io::Write};
+
 use anyhow::Result;
 use rustyline::{error::ReadlineError, CompletionType, Config, Editor};
 
 use crate::{
     complete::{ShellCompleter, ShellHelper},
     parse::StreamCommandParser,
+    HIST_FILE,
 };
 
 pub fn run_shell() -> Result<()> {
@@ -16,6 +19,13 @@ pub fn run_shell() -> Result<()> {
     };
     rl.set_helper(Some(h));
 
+    let mut hist_file = OpenOptions::new()
+        .truncate(true)
+        .create(true)
+        .write(true)
+        .open(HIST_FILE)
+        .unwrap();
+
     loop {
         let readline = rl.readline("$ ");
         match readline {
@@ -23,6 +33,7 @@ pub fn run_shell() -> Result<()> {
                 rl.add_history_entry(line.as_str())?;
                 let parser = StreamCommandParser::new(&line);
                 if !parser.is_empty() {
+                    hist_file.write_all(format!("{line}\r\n").as_bytes())?;
                     let command = parser.finish()?;
                     command.execute()?;
                 }

@@ -1,6 +1,6 @@
 use std::{
-    env,
-    io::{BufReader, Read},
+    env, fs,
+    io::{BufRead, BufReader, Read},
     process::{Child, Stdio},
     str::FromStr,
     thread::JoinHandle,
@@ -9,6 +9,7 @@ use std::{
 use crate::{
     io::{write_stderr, write_stdout, PErr, PIn, POut},
     utils::path_lookup_exact,
+    HIST_FILE,
 };
 use anyhow::{Context, Result};
 
@@ -162,7 +163,7 @@ impl Execute for BuiltinCommand {
             BuiltinCommand::Type(args) => type_command(args, stdout),
             BuiltinCommand::Pwd => pwd_command(stdout),
             BuiltinCommand::Cd(args) => cd_command(args, stderr),
-            BuiltinCommand::History(_) => todo!(),
+            BuiltinCommand::History(args) => history_command(args, stdout),
         }
     }
 }
@@ -241,5 +242,17 @@ fn cd_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<MaybeBloc
         _ => write_stderr(&mut stderr, "cd: No path given".as_bytes())?,
     }
 
+    Ok(MaybeBlockedCommand::NonBlock)
+}
+
+fn history_command(_args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<MaybeBlockedCommand> {
+    let mut hist_file = fs::File::open(HIST_FILE)?;
+    let mut buf = vec![];
+    hist_file.read_to_end(&mut buf)?;
+    for (id, line) in buf.lines().enumerate() {
+        let id = id + 1;
+        let line = line?;
+        write_stdout(&mut stdout, format!("    {id} {line}\n").as_bytes())?;
+    }
     Ok(MaybeBlockedCommand::NonBlock)
 }
