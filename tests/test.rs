@@ -674,3 +674,23 @@ invalid_command: command not found
         TestOption::no_path(),
     )
 }
+
+#[test]
+fn history_n() {
+    check_contains(
+        r#"
+echo hello
+echo world
+invalid_command
+history 2
+"#,
+        r#"
+hello
+world
+invalid_command: command not found
+    3 invalid_command
+    4 history 2
+"#,
+        TestOption::no_path(),
+    )
+}

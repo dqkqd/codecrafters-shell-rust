@@ -163,7 +163,7 @@ impl Execute for BuiltinCommand {
             BuiltinCommand::Type(args) => type_command(args, stdout),
             BuiltinCommand::Pwd => pwd_command(stdout),
             BuiltinCommand::Cd(args) => cd_command(args, stderr),
-            BuiltinCommand::History(args) => history_command(args, stdout),
+            BuiltinCommand::History(args) => history_command(args, stdout, stderr),
         }
     }
 }
@@ -245,11 +245,31 @@ fn cd_command(args: &mut CommandArgs, mut stderr: Vec<PErr>) -> Result<MaybeBloc
     Ok(MaybeBlockedCommand::NonBlock)
 }
 
-fn history_command(_args: &mut CommandArgs, mut stdout: Vec<POut>) -> Result<MaybeBlockedCommand> {
+fn history_command(
+    args: &mut CommandArgs,
+    mut stdout: Vec<POut>,
+    mut stderr: Vec<PErr>,
+) -> Result<MaybeBlockedCommand> {
     let mut hist_file = fs::File::open(HIST_FILE)?;
     let mut buf = vec![];
     hist_file.read_to_end(&mut buf)?;
-    for (id, line) in buf.lines().enumerate() {
+
+    let mut skip = 0;
+    if let Some(n) = args.0.first() {
+        match n.parse::<usize>() {
+            Ok(n) => {
+                skip = buf.lines().count().saturating_sub(n);
+            }
+            Err(_) => {
+                write_stderr(
+                    &mut stderr,
+                    format!("invalid limiting entries, not a number: {n}\n").as_bytes(),
+                )?;
+            }
+        }
+    }
+
+    for (id, line) in buf.lines().enumerate().skip(skip) {
         let id = id + 1;
         let line = line?;
         write_stdout(&mut stdout, format!("    {id} {line}\n").as_bytes())?;
